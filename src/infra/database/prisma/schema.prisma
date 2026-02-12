@@ -10,23 +10,35 @@ datasource db {
 enum AuthProvider {
   local
   google
-
-  @@map("auth_provider")
 }
 
 enum UserRole {
   admin
-  therapist
   common
   enterprise
-  
-  @@map("user_role")
+  professional
+  therapist
+}
+
+enum FamilyRole {
+  child
+  enterprise
+  manager
+  therapist
+  professional
+}
+
+enum TaskStatus {
+  pending
+  in_progress
+  done
+  canceled
 }
 
 model User {
   id           String       @id @default(uuid()) @db.Uuid
   name         String
-  email        String       @unique
+  email        String?      @unique
   passwordHash String?      @map("password_hash")
   provider     AuthProvider @default(local)
   googleId     String?      @unique @map("google_id")
@@ -36,6 +48,10 @@ model User {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   refreshTokens RefreshToken[]
+  familyMembers FamilyMember[]
+
+  tasksAssigned Task[] @relation("TaskTherapist")
+  tasksReceived Task[] @relation("TaskUser")
 
   @@map("users")
   @@index([provider])
@@ -59,4 +75,61 @@ model RefreshToken {
   @@index([userId])
   @@index([expiresAt])
   @@index([revokedAt])
+}
+
+model Family {
+  id   String @id @default(uuid()) @db.Uuid
+  name String
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  members FamilyMember[]
+
+  @@map("families")
+  @@index([createdAt])
+}
+
+model FamilyMember {
+  id       String     @id @default(uuid()) @db.Uuid
+  userId   String     @db.Uuid @map("user_id")
+  familyId String     @db.Uuid @map("family_id")
+  role     FamilyRole
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, familyId, role])
+
+  @@map("family_members")
+  @@index([familyId])
+  @@index([familyId, role])
+  @@index([userId])
+}
+
+model Task {
+  id          String     @id @default(uuid()) @db.Uuid
+  therapistId String     @db.Uuid @map("therapist_id")
+  userId      String     @db.Uuid @map("user_id")
+
+  status      TaskStatus @default(pending)
+  title       String
+  description String?
+  feedback    String?
+  note        String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  therapist User @relation("TaskTherapist", fields: [therapistId], references: [id], onDelete: Cascade)
+  user      User @relation("TaskUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("tasks")
+  @@index([therapistId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
 }

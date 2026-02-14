@@ -12,6 +12,15 @@ enum AuthProvider {
   google
 }
 
+enum AppointmentStatus {
+  scheduled
+  confirmed
+  completed
+  canceled
+  no_show
+}
+
+
 enum UserRole {
   admin
   common
@@ -45,13 +54,18 @@ model User {
   role         UserRole     @default(common)
 
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
 
   refreshTokens RefreshToken[]
   familyMembers FamilyMember[]
 
   tasksAssigned Task[] @relation("TaskTherapist")
   tasksReceived Task[] @relation("TaskUser")
+
+  appointmentsAsTherapist Appointment[] @relation("ApptTherapist")
+  appointmentsAsUser      Appointment[] @relation("ApptUser")
+
+  socialNetworks SocialNetworkUser[]
 
   @@map("users")
   @@index([provider])
@@ -67,7 +81,7 @@ model RefreshToken {
   revokedAt DateTime? @map("revoked_at")
 
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -77,12 +91,40 @@ model RefreshToken {
   @@index([revokedAt])
 }
 
+model Appointment {
+  id          String            @id @default(uuid()) @db.Uuid
+  therapistId String            @db.Uuid @map("therapist_id")
+  userId      String            @db.Uuid @map("user_id")
+
+  status      AppointmentStatus @default(scheduled)
+
+  title       String?
+  startsAt    DateTime          @map("starts_at")
+  endsAt      DateTime          @map("ends_at")
+
+  note        String?
+  feedback    String?
+
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @default(now()) @map("updated_at")
+
+  therapist   User @relation("ApptTherapist", fields: [therapistId], references: [id], onDelete: Cascade)
+  user        User @relation("ApptUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("appointments")
+  @@index([therapistId, startsAt])
+  @@index([userId, startsAt])
+  @@index([status])
+  @@index([startsAt])
+}
+
+
 model Family {
   id   String @id @default(uuid()) @db.Uuid
   name String
 
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
 
   members FamilyMember[]
 
@@ -97,7 +139,7 @@ model FamilyMember {
   role     FamilyRole
 
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
@@ -122,7 +164,7 @@ model Task {
   note        String?
 
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
 
   therapist User @relation("TaskTherapist", fields: [therapistId], references: [id], onDelete: Cascade)
   user      User @relation("TaskUser", fields: [userId], references: [id], onDelete: Cascade)
@@ -132,4 +174,35 @@ model Task {
   @@index([userId])
   @@index([status])
   @@index([createdAt])
+}
+
+model SocialNetwork {
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String  @unique
+  description String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  users SocialNetworkUser[]
+
+  @@map("social_networks")
+  @@index([createdAt])
+}
+
+model SocialNetworkUser {
+  id              String @id @default(uuid()) @db.Uuid
+  socialNetworkId String @db.Uuid @map("social_network_id")
+  userId          String @db.Uuid @map("user_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  socialNetwork SocialNetwork @relation(fields: [socialNetworkId], references: [id], onDelete: Cascade)
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([socialNetworkId, userId])
+  @@map("social_network_users")
+  @@index([socialNetworkId])
+  @@index([userId])
 }

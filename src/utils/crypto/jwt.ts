@@ -3,7 +3,7 @@ import { env } from "../../core/config/env.js";
 import { unauthorized } from "../../core/errors/httpError.js";
 
 // Keep this aligned with prisma/schema.prisma enum UserRole
-export type UserRole = "admin" | "creator" | "common";
+export type UserRole = "admin" | "therapist" | "common" | "enterprise" | "professional";
 
 export type AccessTokenPayload = {
   sub: string; // user id
@@ -18,7 +18,6 @@ type VerifiedAccessToken = AccessTokenPayload & {
 export function signAccessToken(payload: AccessTokenPayload): string {
   const options: SignOptions = {};
 
-  // with exactOptionalPropertyTypes, only set if defined
   if (env.JWT_ACCESS_EXPIRES_IN) {
     options.expiresIn = env.JWT_ACCESS_EXPIRES_IN as NonNullable<SignOptions["expiresIn"]>;
   }
@@ -38,7 +37,7 @@ export function verifyAccessToken(token: string): VerifiedAccessToken {
     }
 
     // basic role guard (optional but nice)
-    if (role !== "admin" && role !== "creator" && role !== "common") {
+    if (role !== "admin" && role !== "therapist" && role !== "common") {
       throw unauthorized("Invalid role in token");
     }
 

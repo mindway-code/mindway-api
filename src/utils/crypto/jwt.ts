@@ -2,11 +2,11 @@ import jwt, { type JwtPayload, type SignOptions } from "jsonwebtoken";
 import { env } from "../../core/config/env.js";
 import { unauthorized } from "../../core/errors/httpError.js";
 
-// Keep this aligned with prisma/schema.prisma enum UserRole
+
 export type UserRole = "admin" | "therapist" | "common" | "enterprise" | "professional";
 
 export type AccessTokenPayload = {
-  sub: string; // user id
+  sub: string;
   role: UserRole;
 };
 
@@ -34,11 +34,6 @@ export function verifyAccessToken(token: string): VerifiedAccessToken {
 
     if (typeof sub !== "string" || !role) {
       throw unauthorized("Invalid token payload");
-    }
-
-    // basic role guard (optional but nice)
-    if (role !== "admin" && role !== "therapist" && role !== "common") {
-      throw unauthorized("Invalid role in token");
     }
 
     return {

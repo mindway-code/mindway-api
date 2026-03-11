@@ -41,6 +41,28 @@ export async function listFamilies(params: { skip: number; take: number }): Prom
   return { items: items as unknown as FamilyRecord[], total };
 }
 
+export async function listFamiliesByUserId(
+  userId: string,
+  params: { skip: number; take: number }
+): Promise<ListFamiliesResult> {
+  const { skip, take } = params;
+
+  const where = { members: { some: { userId } } } as const;
+
+  const [items, total] = await prisma.$transaction([
+    prisma.family.findMany({
+      where,
+      skip,
+      take,
+      orderBy: { createdAt: "desc" },
+      select: familySelect,
+    }),
+    prisma.family.count({ where }),
+  ]);
+
+  return { items: items as unknown as FamilyRecord[], total };
+}
+
 export async function getFamilyById(id: string): Promise<FamilyRecord | null> {
   return prisma.family.findUnique({
     where: { id },
@@ -72,6 +94,7 @@ export async function deleteFamily(id: string): Promise<DeleteFamilyResult> {
 export default {
   createFamily,
   listFamilies,
+  listFamiliesByUserId,
   getFamilyById,
   updateFamily,
   deleteFamily,

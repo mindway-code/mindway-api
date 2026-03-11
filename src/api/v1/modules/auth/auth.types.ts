@@ -23,6 +23,7 @@ export type RegisterDTO = {
   name: string;
   email: string;
   password: string;
+  confirmPassword: string;
   role?: UserRole;
   provider?: "local" | "google";
   googleId?: string | null;

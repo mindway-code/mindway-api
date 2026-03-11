@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { sendSuccess, sendError } from "../../../../utils/response.js";
 import {
   listFamiliesService,
+  listMyFamiliesService,
   createFamilyService,
   getFamilyByIdService,
   updateFamilyService,
@@ -12,6 +13,18 @@ export async function listFamiliesController(req: Request, res: Response) {
   try {
     const { page, pageSize } = req.query;
     const result = await listFamiliesService(page, pageSize);
+
+    return sendSuccess(res, result.items, undefined, { pagination: result.meta.pagination });
+  } catch (err) {
+    return sendError(res, err);
+  }
+}
+
+export async function listMyFamiliesController(req: Request, res: Response) {
+  try {
+    const userId = req.user!.id;
+    const { page, pageSize } = req.query;
+    const result = await listMyFamiliesService(userId, page, pageSize);
 
     return sendSuccess(res, result.items, undefined, { pagination: result.meta.pagination });
   } catch (err) {
@@ -67,6 +80,7 @@ export async function deleteFamilyController(req: Request, res: Response) {
 
 export default {
   listFamiliesController,
+  listMyFamiliesController,
   createFamilyController,
   getFamilyByIdController,
   updateFamilyController,

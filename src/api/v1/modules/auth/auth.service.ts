@@ -25,6 +25,9 @@ export async function registerService(dto: RegisterDTO): Promise<RegisterResult>
   const name = dto.name?.trim();
   const email = dto.email?.trim().toLowerCase();
   const password = dto.password;
+  const confirmPassword = dto.confirmPassword;
+
+  if (password != confirmPassword) throw badRequest("Password and ConfirmPassword are not equal");
 
   if (!name || !email || !password) throw badRequest("Missing credentials");
 
@@ -70,7 +73,7 @@ export async function loginService(email: string, password: string): Promise<Log
   if (!user || !user.passwordHash) throw unauthorized("Invalid credentials");
 
   const ok = await verifyPassword(password, user.passwordHash);
-  if (!ok) throw unauthorized("Invalid credentials");
+  if (!ok) throw unauthorized("Password is incorrect");
 
   const role = (user.role ?? "common") as UserRole;
 

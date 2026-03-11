@@ -88,10 +88,22 @@ export async function deleteSocialNetworkUser(
   return deleted;
 }
 
+export async function isSocialNetworkMember(socialNetworkId: string, userId: string): Promise<boolean> {
+  const found = await prisma.socialNetworkUser.findFirst({
+    where: { socialNetworkId, userId },
+    select: { id: true },
+  });
+
+  console.log(found)
+
+  return Boolean(found);
+}
+
 export default {
   createSocialNetworkUser,
   listSocialNetworkUsers,
   getSocialNetworkUserById,
   updateSocialNetworkUser,
   deleteSocialNetworkUser,
+  isSocialNetworkMember,
 };

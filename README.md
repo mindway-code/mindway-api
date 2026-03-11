@@ -99,10 +99,10 @@ api/
           users/
           families/
           tasks/
-          appointments/           # routes defined, not mounted in v1Routes (see API Reference)
-          familyMembers/          # routes defined, not mounted in v1Routes
-          socialNetworks/         # routes defined, not mounted in v1Routes
-          socialNetworkUsers/     # routes defined, not mounted in v1Routes
+          appointments/
+          familyMembers/
+          socialNetworks/
+          socialNetworkUsers/
     core/
       config/env.ts
       config/cors.ts

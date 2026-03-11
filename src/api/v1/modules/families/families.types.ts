@@ -34,3 +34,5 @@ export type ListFamiliesResponse = {
   items: unknown[];
   meta: { pagination: { page: number; pageSize: number; total: number; totalPages: number } };
 };
+
+export type ListMyFamiliesResponse = ListFamiliesResponse;

@@ -3,6 +3,7 @@ import http from "http";
 import createApp from "./app.js";
 import { env } from "../../core/config/env.js";
 import { logger } from "../../core/logger/logger.js";
+import { closeSocket, initSocket } from "../realtime/socket.js";
 
 let server: http.Server | null = null;
 
@@ -11,6 +12,7 @@ export async function startServer(): Promise<http.Server> {
 
 	const app = createApp;
 	server = http.createServer(app as any);
+	initSocket(server);
 
 	return new Promise((resolve) => {
 		server!.listen(env.PORT, () => {
@@ -22,6 +24,7 @@ export async function startServer(): Promise<http.Server> {
 
 export async function stopServer(): Promise<void> {
 	if (!server) return;
+	await closeSocket();
 	await new Promise<void>((resolve, reject) => {
 		server!.close((err) => {
 			if (err) return reject(err);

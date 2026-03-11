@@ -9,6 +9,7 @@ import {
   updateSocialNetworkController,
   deleteSocialNetworkController,
 } from "./socialNetwork.controller.js";
+import authTherapistmiddleware from "../../../../core/middlewares/authTherapist.middleware.js";
 
 export const socialNetworkRoutes = Router();
 
@@ -16,26 +17,28 @@ socialNetworkRoutes.get(
   "/social-networks",
   authRateLimiter,
   authMiddleware,
-  authAdminMiddleware,
+  authTherapistmiddleware,
   listSocialNetworksController
 );
 socialNetworkRoutes.post(
   "/social-networks",
   authRateLimiter,
   authMiddleware,
-  authAdminMiddleware,
+  authTherapistmiddleware,
   createSocialNetworkController
 );
 socialNetworkRoutes.put(
   "/social-networks/:id",
   authRateLimiter,
   authMiddleware,
+  authTherapistmiddleware,
   updateSocialNetworkController
 );
 socialNetworkRoutes.delete(
   "/social-networks/:id",
   authRateLimiter,
   authMiddleware,
+  authTherapistmiddleware,
   deleteSocialNetworkController
 );
 

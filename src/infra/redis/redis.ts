@@ -8,9 +8,11 @@ redisClient.on('error', (err) => {
   console.error('Redis Client Error', err);
 });
 
-(async () => {
-  await redisClient.connect();
-})();
+if (process.env.NODE_ENV !== "test") {
+  (async () => {
+    await redisClient.connect();
+  })();
+}
 
 /**
  * Cache data with a specific key and optional expiration time.

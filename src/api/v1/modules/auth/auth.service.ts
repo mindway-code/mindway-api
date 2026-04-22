@@ -16,136 +16,173 @@ import type { CreateUserInput, LoginResult, RegisterDTO, RegisterResult } from "
 
 
 
-function computeRefreshExpiry(): Date {
-  return new Date(Date.now() + (Number(env.COOKIE_MAX_AGE_DAYS) || 7) * 24 * 60 * 60 * 1000);
+export type AuthServiceDeps = {
+  env: Pick<typeof env, "COOKIE_MAX_AGE_DAYS">;
+  badRequest: typeof badRequest;
+  unauthorized: typeof unauthorized;
+
+  signAccessToken: typeof signAccessToken;
+  signRefreshToken: typeof signRefreshToken;
+  verifyRefreshToken: typeof verifyRefreshToken;
+
+  hashPassword: typeof hashPassword;
+  verifyPassword: typeof verifyPassword;
+
+  findAuthUserByEmail: typeof findAuthUserByEmail;
+  createLocalUser: typeof createLocalUser;
+  createRefreshTokenRow: typeof createRefreshTokenRow;
+  findActiveRefreshTokensByUserId: typeof findActiveRefreshTokensByUserId;
+  revokeRefreshTokenById: typeof revokeRefreshTokenById;
+};
+
+function computeRefreshExpiry(deps: AuthServiceDeps): Date {
+  return new Date(Date.now() + (Number(deps.env.COOKIE_MAX_AGE_DAYS) || 7) * 24 * 60 * 60 * 1000);
 }
 
+export function makeAuthServices(deps: AuthServiceDeps) {
+  async function registerService(dto: RegisterDTO): Promise<RegisterResult> {
+    const name = dto.name?.trim();
+    const email = dto.email?.trim().toLowerCase();
+    const password = dto.password;
+    const confirmPassword = dto.confirmPassword;
 
-export async function registerService(dto: RegisterDTO): Promise<RegisterResult> {
-  const name = dto.name?.trim();
-  const email = dto.email?.trim().toLowerCase();
-  const password = dto.password;
-  const confirmPassword = dto.confirmPassword;
+    if (password != confirmPassword) throw deps.badRequest("Password and ConfirmPassword are not equal");
 
-  if (password != confirmPassword) throw badRequest("Password and ConfirmPassword are not equal");
+    if (!name || !email || !password) throw deps.badRequest("Missing credentials");
 
-  if (!name || !email || !password) throw badRequest("Missing credentials");
+    const existing = await deps.findAuthUserByEmail(email);
+    if (existing) throw deps.badRequest("Email already in use");
 
-  const existing = await findAuthUserByEmail(email);
-  if (existing) throw badRequest("Email already in use");
+    const role: UserRole = dto.role ?? "common";
+    const provider = dto.provider ?? "local";
 
-  const role: UserRole = dto.role ?? "common";
-  const provider = dto.provider ?? "local";
+    const passwordHash = await deps.hashPassword(password);
 
-  const passwordHash = await hashPassword(password);
+    const input: CreateUserInput = {
+      name,
+      email,
+      passwordHash,
+      role,
+      provider,
+      googleId: dto.googleId ?? null,
+    };
 
-  const input: CreateUserInput = {
-    name,
-    email,
-    passwordHash,
-    role,
-    provider,
-    googleId: dto.googleId ?? null,
-  };
+    const user = await deps.createLocalUser(input);
 
-  const user = await createLocalUser(input);
+    const accessToken = deps.signAccessToken({ sub: user.id, role: user.role ?? "common" });
+    const refreshToken = deps.signRefreshToken({ sub: user.id, role: user.role ?? "common" });
 
-  const accessToken = signAccessToken({ sub: user.id, role: user.role ?? "common" });
-  const refreshToken = signRefreshToken({ sub: user.id, role: user.role ?? "common" });
+    const tokenHash = await deps.hashPassword(refreshToken);
+    await deps.createRefreshTokenRow({
+      userId: user.id,
+      tokenHash,
+      expiresAt: computeRefreshExpiry(deps),
+    });
 
-  const tokenHash = await hashPassword(refreshToken);
-  await createRefreshTokenRow({
-    userId: user.id,
-    tokenHash,
-    expiresAt: computeRefreshExpiry(),
-  });
-
-  return { accessToken, refreshToken };
-}
-
-
-export async function loginService(email: string, password: string): Promise<LoginResult> {
-  const normalizedEmail = email?.trim().toLowerCase();
-
-  if (!normalizedEmail || !password) throw unauthorized("Missing credentials");
-
-  const user = await findAuthUserByEmail(normalizedEmail);
-  if (!user || !user.passwordHash) throw unauthorized("Invalid credentials");
-
-  const ok = await verifyPassword(password, user.passwordHash);
-  if (!ok) throw unauthorized("Password is incorrect");
-
-  const role = (user.role ?? "common") as UserRole;
-
-  const accessToken = signAccessToken({ sub: user.id, role });
-  const refreshToken = signRefreshToken({ sub: user.id, role });
-
-  const tokenHash = await hashPassword(refreshToken);
-  await createRefreshTokenRow({
-    userId: user.id,
-    tokenHash,
-    expiresAt: computeRefreshExpiry(),
-  });
-
-  return { accessToken, refreshToken };
-}
-
-
-export async function refreshService(token: string): Promise<LoginResult> {
-  if (!token) throw unauthorized("Missing refresh token");
-
-  const decoded = verifyRefreshToken(token);
-  const userId = decoded.sub;
-  const role = (decoded.role ?? "common") as UserRole;
-
-  const candidates = await findActiveRefreshTokensByUserId(userId);
-
-  let matchedId: string | null = null;
-  for (const c of candidates) {
-    const match = await verifyPassword(token, c.tokenHash);
-    if (match) {
-      matchedId = c.id;
-      break;
-    }
+    return { accessToken, refreshToken };
   }
 
-  if (!matchedId) throw unauthorized("Invalid refresh token");
+  async function loginService(email: string, password: string): Promise<LoginResult> {
+    const normalizedEmail = email?.trim().toLowerCase();
 
-  await revokeRefreshTokenById(matchedId);
+    if (!normalizedEmail || !password) throw deps.unauthorized("Missing credentials");
 
-  const newRefresh = signRefreshToken({ sub: userId, role });
-  const newHash = await hashPassword(newRefresh);
+    const user = await deps.findAuthUserByEmail(normalizedEmail);
+    if (!user || !user.passwordHash) throw deps.unauthorized("Invalid credentials");
 
-  await createRefreshTokenRow({
-    userId,
-    tokenHash: newHash,
-    expiresAt: computeRefreshExpiry(),
-  });
+    const ok = await deps.verifyPassword(password, user.passwordHash);
+    if (!ok) throw deps.unauthorized("Password is incorrect");
 
-  const accessToken = signAccessToken({ sub: userId, role });
-  return { accessToken, refreshToken: newRefresh };
-}
+    const role = (user.role ?? "common") as UserRole;
 
+    const accessToken = deps.signAccessToken({ sub: user.id, role });
+    const refreshToken = deps.signRefreshToken({ sub: user.id, role });
 
-export async function logoutService(token?: string): Promise<void> {
-  if (!token) return;
+    const tokenHash = await deps.hashPassword(refreshToken);
+    await deps.createRefreshTokenRow({
+      userId: user.id,
+      tokenHash,
+      expiresAt: computeRefreshExpiry(deps),
+    });
 
-  try {
-    const decoded = verifyRefreshToken(token);
+    return { accessToken, refreshToken };
+  }
+
+  async function refreshService(token: string): Promise<LoginResult> {
+    if (!token) throw deps.unauthorized("Missing refresh token");
+
+    const decoded = deps.verifyRefreshToken(token);
     const userId = decoded.sub;
+    const role = (decoded.role ?? "common") as UserRole;
 
-    const candidates = await findActiveRefreshTokensByUserId(userId);
+    const candidates = await deps.findActiveRefreshTokensByUserId(userId);
 
+    let matchedId: string | null = null;
     for (const c of candidates) {
-      const match = await verifyPassword(token, c.tokenHash);
+      const match = await deps.verifyPassword(token, c.tokenHash);
       if (match) {
-        await revokeRefreshTokenById(c.id);
+        matchedId = c.id;
         break;
       }
     }
-  } catch {
-    // ignore verification errors on logout
+
+    if (!matchedId) throw deps.unauthorized("Invalid refresh token");
+
+    await deps.revokeRefreshTokenById(matchedId);
+
+    const newRefresh = deps.signRefreshToken({ sub: userId, role });
+    const newHash = await deps.hashPassword(newRefresh);
+
+    await deps.createRefreshTokenRow({
+      userId,
+      tokenHash: newHash,
+      expiresAt: computeRefreshExpiry(deps),
+    });
+
+    const accessToken = deps.signAccessToken({ sub: userId, role });
+    return { accessToken, refreshToken: newRefresh };
   }
+
+  async function logoutService(token?: string): Promise<void> {
+    if (!token) return;
+
+    try {
+      const decoded = deps.verifyRefreshToken(token);
+      const userId = decoded.sub;
+
+      const candidates = await deps.findActiveRefreshTokensByUserId(userId);
+
+      for (const c of candidates) {
+        const match = await deps.verifyPassword(token, c.tokenHash);
+        if (match) {
+          await deps.revokeRefreshTokenById(c.id);
+          break;
+        }
+      }
+    } catch {
+      // ignore verification errors on logout
+    }
+  }
+
+  return { registerService, loginService, refreshService, logoutService };
 }
+
+const defaultDeps: AuthServiceDeps = {
+  env,
+  badRequest,
+  unauthorized,
+  signAccessToken,
+  signRefreshToken,
+  verifyRefreshToken,
+  hashPassword,
+  verifyPassword,
+  findAuthUserByEmail,
+  createLocalUser,
+  createRefreshTokenRow,
+  findActiveRefreshTokensByUserId,
+  revokeRefreshTokenById,
+};
+
+export const { registerService, loginService, refreshService, logoutService } = makeAuthServices(defaultDeps);
 
 export default { registerService, loginService, refreshService, logoutService };

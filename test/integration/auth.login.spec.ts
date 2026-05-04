@@ -32,7 +32,7 @@ describe("integration: POST /auth/login", () => {
   it("returns 200 + accessToken payload", async () => {
     const app = createApp();
 
-    const res = await request(app).post("/auth/login").send({ email: "a@a.com", password: "pass" }).expect(200);
+    const res = await request(app).post("/api/auth/login").send({ email: "a@a.com", password: "pass" }).expect(200);
 
     expect(res.body).toEqual(
       expect.objectContaining({

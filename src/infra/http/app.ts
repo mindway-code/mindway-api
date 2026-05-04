@@ -28,7 +28,7 @@ export function createApp() {
     allowedHeaders: [...corsOptions().allowedHeaders],
   }));
 
-  app.use(v1Routes);
+  app.use("/api",v1Routes);
 
 	app.use(errorHandler);
 

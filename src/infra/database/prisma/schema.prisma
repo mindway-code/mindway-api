@@ -71,6 +71,9 @@ model User {
   messagesSent     Message[] @relation("MessageSender")
   messagesReceived Message[] @relation("MessageRecipient")
 
+  responsibleChildren          Child[] @relation("ChildResponsible")
+  secondaryResponsibleChildren Child[] @relation("ChildSecondaryResponsible")
+
   @@map("users")
   @@index([provider])
   @@index([createdAt])
@@ -231,4 +234,29 @@ model Message {
   @@index([senderId, createdAt])
   @@index([recipientId, createdAt])
   @@index([socialNetworkId, createdAt])
+}
+
+model Child {
+  id                     String  @id @default(uuid()) @db.Uuid
+  responsibleId          String  @db.Uuid @map("responsible_id")
+  secondaryResponsibleId String? @db.Uuid @map("secondary_responsible_id")
+
+  name        String
+  age         Int
+  birthDate   DateTime @map("birth_date")
+  observation String?
+
+  accessCode String @unique @map("access_code")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  responsible          User  @relation("ChildResponsible", fields: [responsibleId], references: [id], onDelete: Cascade)
+  secondaryResponsible User? @relation("ChildSecondaryResponsible", fields: [secondaryResponsibleId], references: [id], onDelete: SetNull)
+
+  @@map("children")
+  @@index([responsibleId])
+  @@index([secondaryResponsibleId])
+  @@index([accessCode])
+  @@index([createdAt])
 }

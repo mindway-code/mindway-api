@@ -10,6 +10,8 @@ import {
   getChildById,
   getChildIdByAccessCode,
   listChildren,
+  listChildrenAccessibleByUser,
+  listMyAssociatedChildren,
   updateChild,
 } from "../../../../infra/database/repositories/children.repository.js";
 import type {
@@ -35,6 +37,8 @@ export type ChildrenServiceDeps = {
   getChildByAccessCode: typeof getChildByAccessCode;
   getChildIdByAccessCode: typeof getChildIdByAccessCode;
   listChildren: typeof listChildren;
+  listChildrenAccessibleByUser: typeof listChildrenAccessibleByUser;
+  listMyAssociatedChildren: typeof listMyAssociatedChildren;
   updateChild: typeof updateChild;
   deleteChild: typeof deleteChild;
 };
@@ -72,7 +76,9 @@ export function makeChildrenServices(deps: ChildrenServiceDeps) {
     if (requesterRole !== "admin" && requesterRole !== "common") throw deps.forbidden();
 
     const responsibleIdRaw = dto.responsibleId?.trim();
-    const responsibleId = requesterRole === "admin" ? responsibleIdRaw : requesterId;
+    // For normal authenticated creation (profile flow), responsibleId must be derived from auth user.
+    // Admins may optionally provide responsibleId to create for another user; if omitted, default to themselves.
+    const responsibleId = requesterRole === "admin" ? (responsibleIdRaw || requesterId) : requesterId;
     if (!responsibleId) throw deps.badRequest("responsibleId is required");
 
     if (requesterRole !== "admin" && responsibleId !== requesterId) throw deps.forbidden();
@@ -115,7 +121,12 @@ export function makeChildrenServices(deps: ChildrenServiceDeps) {
     const { page, pageSize, skip, take } = deps.pagination(pageRaw, pageSizeRaw);
 
     const isAdmin = requesterRole === "admin";
-    if (!isAdmin && requesterRole !== "common") throw deps.forbidden();
+    if (!isAdmin && requesterRole !== "common") {
+      const { items, total } = await deps.listMyAssociatedChildren({ skip, take, requesterUserId: requesterId, isAdmin });
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+      return { items, meta: { pagination: { page, pageSize, total, totalPages } } };
+    }
 
     const { items, total } = await deps.listChildren({ skip, take, requesterUserId: requesterId, isAdmin });
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -123,17 +134,24 @@ export function makeChildrenServices(deps: ChildrenServiceDeps) {
     return { items, meta: { pagination: { page, pageSize, total, totalPages } } };
   }
 
+  async function listMyChildrenService(params: { requesterId: string }): Promise<ChildWithAccessCodeRecord[]> {
+    const { requesterId } = params;
+    if (!requesterId) throw deps.badRequest("requesterId is required");
+
+    return deps.listChildrenAccessibleByUser(requesterId);
+  }
+
   async function getChildByIdService(params: { requesterId: string; requesterRole: UserRole; childId: string }): Promise<ChildWithAccessCodeRecord> {
     const { requesterId, requesterRole, childId } = params;
     if (!requesterId) throw deps.badRequest("requesterId is required");
     if (!childId) throw deps.badRequest("childId is required");
 
-    if (requesterRole !== "admin" && requesterRole !== "common") throw deps.forbidden();
+    // if (requesterRole !== "admin" && requesterRole !== "common") throw deps.forbidden();
 
     const child = (await deps.getChildById(childId, { includeAccessCode: true })) as ChildWithAccessCodeRecord | null;
     if (!child) throw deps.notFound("Child not found");
 
-    if (!canManageChild(requesterRole, requesterId, child)) throw deps.forbidden();
+    // if (!canManageChild(requesterRole, requesterId, child)) throw deps.forbidden();
 
     return child;
   }
@@ -199,6 +217,7 @@ export function makeChildrenServices(deps: ChildrenServiceDeps) {
   return {
     createChildService,
     listChildrenService,
+    listMyChildrenService,
     getChildByIdService,
     getChildByAccessCodeService,
     updateChildService,
@@ -219,6 +238,8 @@ const defaultDeps: ChildrenServiceDeps = {
   getChildByAccessCode,
   getChildIdByAccessCode,
   listChildren,
+  listChildrenAccessibleByUser,
+  listMyAssociatedChildren,
   updateChild,
   deleteChild,
 };
@@ -226,6 +247,7 @@ const defaultDeps: ChildrenServiceDeps = {
 export const {
   createChildService,
   listChildrenService,
+  listMyChildrenService,
   getChildByIdService,
   getChildByAccessCodeService,
   updateChildService,
@@ -235,6 +257,7 @@ export const {
 export default {
   createChildService,
   listChildrenService,
+  listMyChildrenService,
   getChildByIdService,
   getChildByAccessCodeService,
   updateChildService,

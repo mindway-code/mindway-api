@@ -17,6 +17,7 @@ const auth = {
 const childrenService = {
   createChildService: jest.fn(),
   listChildrenService: jest.fn(),
+  listMyChildrenService: jest.fn(),
   getChildByIdService: jest.fn(),
   updateChildService: jest.fn(),
   deleteChildService: jest.fn(),
@@ -105,4 +106,3 @@ describe("integration: children routes", () => {
     );
   });
 });
-

@@ -3,9 +3,385 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id                      String              @id @default(uuid()) @db.Uuid
+  name                    String
+  email                   String?             @unique
+  passwordHash            String?             @map("password_hash")
+  provider                AuthProvider        @default(local)
+  googleId                String?             @unique @map("google_id")
+  role                    UserRole            @default(common)
+  createdAt               DateTime            @default(now()) @map("created_at")
+  updatedAt               DateTime            @default(now()) @map("updated_at")
+  appointmentsAsTherapist Appointment[]       @relation("ApptTherapist")
+  appointmentsAsUser      Appointment[]       @relation("ApptUser")
+  familyMembers           FamilyMember[]
+  messagesReceived        Message[]           @relation("MessageRecipient")
+  messagesSent            Message[]           @relation("MessageSender")
+  refreshTokens           RefreshToken[]
+  socialNetworks          SocialNetworkUser[]
+  tasksAssigned           Task[]              @relation("TaskTherapist")
+  tasksReceived           Task[]              @relation("TaskUser")
+
+  responsibleChildren          Child[] @relation("ChildResponsible")
+  secondaryResponsibleChildren Child[] @relation("ChildSecondaryResponsible")
+
+  associatedUsers AssociationChild[]
+  reports         ReportsChild[]
+
+  @@index([provider])
+  @@index([createdAt])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @default(now()) @map("updated_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@map("refresh_tokens")
+}
+
+model Appointment {
+  id          String            @id @default(uuid()) @db.Uuid
+  therapistId String            @map("therapist_id") @db.Uuid
+  userId      String            @map("user_id") @db.Uuid
+  status      AppointmentStatus @default(scheduled)
+  title       String?
+  startsAt    DateTime          @map("starts_at")
+  endsAt      DateTime          @map("ends_at")
+  note        String?
+  feedback    String?
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @default(now()) @map("updated_at")
+  therapist   User              @relation("ApptTherapist", fields: [therapistId], references: [id], onDelete: Cascade)
+  user        User              @relation("ApptUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([therapistId, startsAt])
+  @@index([userId, startsAt])
+  @@index([status])
+  @@index([startsAt])
+  @@map("appointments")
+}
+
+model Family {
+  id        String         @id @default(uuid()) @db.Uuid
+  name      String
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @default(now()) @map("updated_at")
+  members   FamilyMember[]
+
+  @@index([createdAt])
+  @@map("families")
+}
+
+model FamilyMember {
+  id        String     @id @default(uuid()) @db.Uuid
+  userId    String     @map("user_id") @db.Uuid
+  familyId  String     @map("family_id") @db.Uuid
+  role      FamilyRole
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @default(now()) @map("updated_at")
+  family    Family     @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, familyId, role])
+  @@index([familyId])
+  @@index([familyId, role])
+  @@index([userId])
+  @@map("family_members")
+}
+
+model Task {
+  id          String     @id @default(uuid()) @db.Uuid
+  therapistId String     @map("therapist_id") @db.Uuid
+  userId      String     @map("user_id") @db.Uuid
+  status      TaskStatus @default(pending)
+  title       String
+  description String?
+  feedback    String?
+  note        String?
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @default(now()) @map("updated_at")
+  therapist   User       @relation("TaskTherapist", fields: [therapistId], references: [id], onDelete: Cascade)
+  user        User       @relation("TaskUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([therapistId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("tasks")
+}
+
+model SocialNetwork {
+  id          String              @id @default(uuid()) @db.Uuid
+  name        String              @unique
+  description String?
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @default(now()) @map("updated_at")
+  messages    Message[]
+  users       SocialNetworkUser[]
+
+  @@index([createdAt])
+  @@map("social_networks")
+}
+
+model SocialNetworkUser {
+  id              String        @id @default(uuid()) @db.Uuid
+  socialNetworkId String        @map("social_network_id") @db.Uuid
+  userId          String        @map("user_id") @db.Uuid
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @default(now()) @map("updated_at")
+  socialNetwork   SocialNetwork @relation(fields: [socialNetworkId], references: [id], onDelete: Cascade)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([socialNetworkId, userId])
+  @@index([socialNetworkId])
+  @@index([userId])
+  @@map("social_network_users")
+}
+
+model Message {
+  id              String         @id @default(uuid()) @db.Uuid
+  senderId        String         @map("sender_id") @db.Uuid
+  recipientId     String?        @map("recipient_id") @db.Uuid
+  socialNetworkId String?        @map("social_network_id") @db.Uuid
+  content         String
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @default(now()) @map("updated_at")
+  recipient       User?          @relation("MessageRecipient", fields: [recipientId], references: [id])
+  sender          User           @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  socialNetwork   SocialNetwork? @relation(fields: [socialNetworkId], references: [id], onDelete: Cascade)
+
+  @@index([senderId, createdAt])
+  @@index([recipientId, createdAt])
+  @@index([socialNetworkId, createdAt])
+  @@map("messages")
+}
+
+
+model Child {
+  id                     String  @id @default(uuid()) @db.Uuid
+  responsibleId          String  @map("responsible_id") @db.Uuid
+  secondaryResponsibleId String? @map("secondary_responsible_id") @db.Uuid
+
+  name        String
+  age         Int
+  birthDate   DateTime @map("birth_date")
+  observation String?
+
+  accessCode String @unique @map("access_code")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  responsible          User  @relation("ChildResponsible", fields: [responsibleId], references: [id], onDelete: Cascade)
+  secondaryResponsible User? @relation("ChildSecondaryResponsible", fields: [secondaryResponsibleId], references: [id], onDelete: SetNull)
+
+  anamnesis Anamnesis?
+
+  associatedUsers AssociationChild[]
+  reports         ReportsChild[]
+
+  @@index([responsibleId])
+  @@index([secondaryResponsibleId])
+  @@index([accessCode])
+  @@index([createdAt])
+  @@map("children")
+}
+
+model AssociationChild {
+  id      String @id @default(uuid()) @db.Uuid
+  userId  String @map("user_id") @db.Uuid
+  childId String @map("child_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  child Child @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, childId])
+  @@index([userId])
+  @@index([childId])
+  @@index([createdAt])
+  @@map("association_children")
+}
+
+model ReportsChild {
+  id      String @id @default(uuid()) @db.Uuid
+  childId String @map("child_id") @db.Uuid
+  userId  String @map("user_id") @db.Uuid
+
+  userRole UserRole @map("user_role")
+
+  title          String
+  behavior       String?
+  difficulty     String?
+  recommendation String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  child Child @relation(fields: [childId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([childId])
+  @@index([userId])
+  @@index([userRole])
+  @@index([createdAt])
+  @@map("reports_children")
+}
+
+model Anamnesis {
+  id      String @id @default(uuid()) @db.Uuid
+  childId String @unique @map("child_id") @db.Uuid
+
+  generalNotes String? @map("general_notes")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  child Child @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  birth                 AnamnesisBirth?
+  motorDevelopment      AnamnesisMotorDevelopment?
+  languageCommunication AnamnesisLanguageCommunication?
+  health                AnamnesisHealth?
+  behavior              AnamnesisBehavior?
+  routine               AnamnesisRoutine?
+
+  @@index([childId])
+  @@index([createdAt])
+  @@map("anamneses")
+}
+
+model AnamnesisBirth {
+  id          String @id @default(uuid()) @db.Uuid
+  anamnesisId String @unique @map("anamnesis_id") @db.Uuid
+
+  gestationalWeeks       Int?    @map("gestational_weeks")
+  birthType              String? @map("birth_type")
+  birthWeightGrams       Int?    @map("birth_weight_grams")
+  birthHeightCentimeters Int?    @map("birth_height_centimeters")
+  apgarOneMinute         Int?    @map("apgar_one_minute")
+  apgarFiveMinutes       Int?    @map("apgar_five_minutes")
+  birthComplication      String? @map("birth_complication")
+  hospitalizationDays    Int?    @map("hospitalization_days")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  anamnesis Anamnesis @relation(fields: [anamnesisId], references: [id], onDelete: Cascade)
+
+  @@index([anamnesisId])
+  @@map("anamnesis_births")
+}
+
+model AnamnesisMotorDevelopment {
+  id          String @id @default(uuid()) @db.Uuid
+  anamnesisId String @unique @map("anamnesis_id") @db.Uuid
+
+  neckControlAgeMonths Int?    @map("neck_control_age_months")
+  sittingAgeMonths     Int?    @map("sitting_age_months")
+  crawlingAgeMonths    Int?    @map("crawling_age_months")
+  firstStepsAgeMonths  Int?    @map("first_steps_age_months")
+  fineCoordination     String? @map("fine_coordination")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  anamnesis Anamnesis @relation(fields: [anamnesisId], references: [id], onDelete: Cascade)
+
+  @@index([anamnesisId])
+  @@map("anamnesis_motor_developments")
+}
+
+model AnamnesisLanguageCommunication {
+  id          String @id @default(uuid()) @db.Uuid
+  anamnesisId String @unique @map("anamnesis_id") @db.Uuid
+
+  firstWordsAgeMonths    Int?    @map("first_words_age_months")
+  fullSentencesAgeMonths Int?    @map("full_sentences_age_months")
+  comprehension          String?
+  currentCommunication   String? @map("current_communication")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  anamnesis Anamnesis @relation(fields: [anamnesisId], references: [id], onDelete: Cascade)
+
+  @@index([anamnesisId])
+  @@map("anamnesis_language_communications")
+}
+
+model AnamnesisHealth {
+  id          String @id @default(uuid()) @db.Uuid
+  anamnesisId String @unique @map("anamnesis_id") @db.Uuid
+
+  diagnosis  String?
+  medication String?
+  allergies  String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  anamnesis Anamnesis @relation(fields: [anamnesisId], references: [id], onDelete: Cascade)
+
+  @@index([anamnesisId])
+  @@map("anamnesis_healths")
+}
+
+model AnamnesisBehavior {
+  id          String @id @default(uuid()) @db.Uuid
+  anamnesisId String @unique @map("anamnesis_id") @db.Uuid
+
+  concentrationDifficulty String? @map("concentration_difficulty")
+  interaction             String?
+  activityPreference      String? @map("activity_preference")
+  anxiety                 String?
+  hyperactivity           String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  anamnesis Anamnesis @relation(fields: [anamnesisId], references: [id], onDelete: Cascade)
+
+  @@index([anamnesisId])
+  @@map("anamnesis_behaviors")
+}
+
+model AnamnesisRoutine {
+  id          String @id @default(uuid()) @db.Uuid
+  anamnesisId String @unique @map("anamnesis_id") @db.Uuid
+
+  wakesUpAt          String? @map("wakes_up_at")
+  therapies          String?
+  schoolPeriod       String? @map("school_period")
+  extraActivity      String? @map("extra_activity")
+  sleepsAt           String? @map("sleeps_at")
+  routineObservation String? @map("routine_observation")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  anamnesis Anamnesis @relation(fields: [anamnesisId], references: [id], onDelete: Cascade)
+
+  @@index([anamnesisId])
+  @@map("anamnesis_routines")
 }
 
 enum AuthProvider {
@@ -20,7 +396,6 @@ enum AppointmentStatus {
   canceled
   no_show
 }
-
 
 enum UserRole {
   admin
@@ -43,220 +418,4 @@ enum TaskStatus {
   in_progress
   done
   canceled
-}
-
-model User {
-  id           String       @id @default(uuid()) @db.Uuid
-  name         String
-  email        String?      @unique
-  passwordHash String?      @map("password_hash")
-  provider     AuthProvider @default(local)
-  googleId     String?      @unique @map("google_id")
-  role         UserRole     @default(common)
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @default(now()) @map("updated_at")
-
-  refreshTokens RefreshToken[]
-  familyMembers FamilyMember[]
-
-  tasksAssigned Task[] @relation("TaskTherapist")
-  tasksReceived Task[] @relation("TaskUser")
-
-  appointmentsAsTherapist Appointment[] @relation("ApptTherapist")
-  appointmentsAsUser      Appointment[] @relation("ApptUser")
-
-  socialNetworks SocialNetworkUser[]
-
-  messagesSent     Message[] @relation("MessageSender")
-  messagesReceived Message[] @relation("MessageRecipient")
-
-  responsibleChildren          Child[] @relation("ChildResponsible")
-  secondaryResponsibleChildren Child[] @relation("ChildSecondaryResponsible")
-
-  @@map("users")
-  @@index([provider])
-  @@index([createdAt])
-}
-
-model RefreshToken {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @db.Uuid @map("user_id")
-  tokenHash String   @unique @map("token_hash")
-
-  expiresAt DateTime  @map("expires_at")
-  revokedAt DateTime? @map("revoked_at")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @default(now()) @map("updated_at")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("refresh_tokens")
-  @@index([userId])
-  @@index([expiresAt])
-  @@index([revokedAt])
-}
-
-model Appointment {
-  id          String            @id @default(uuid()) @db.Uuid
-  therapistId String            @db.Uuid @map("therapist_id")
-  userId      String            @db.Uuid @map("user_id")
-
-  status      AppointmentStatus @default(scheduled)
-
-  title       String?
-  startsAt    DateTime          @map("starts_at")
-  endsAt      DateTime          @map("ends_at")
-
-  note        String?
-  feedback    String?
-
-  createdAt   DateTime          @default(now()) @map("created_at")
-  updatedAt   DateTime          @default(now()) @map("updated_at")
-
-  therapist   User @relation("ApptTherapist", fields: [therapistId], references: [id], onDelete: Cascade)
-  user        User @relation("ApptUser", fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("appointments")
-  @@index([therapistId, startsAt])
-  @@index([userId, startsAt])
-  @@index([status])
-  @@index([startsAt])
-}
-
-
-model Family {
-  id   String @id @default(uuid()) @db.Uuid
-  name String
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @default(now()) @map("updated_at")
-
-  members FamilyMember[]
-
-  @@map("families")
-  @@index([createdAt])
-}
-
-model FamilyMember {
-  id       String     @id @default(uuid()) @db.Uuid
-  userId   String     @db.Uuid @map("user_id")
-  familyId String     @db.Uuid @map("family_id")
-  role     FamilyRole
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @default(now()) @map("updated_at")
-
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, familyId, role])
-
-  @@map("family_members")
-  @@index([familyId])
-  @@index([familyId, role])
-  @@index([userId])
-}
-
-model Task {
-  id          String     @id @default(uuid()) @db.Uuid
-  therapistId String     @db.Uuid @map("therapist_id")
-  userId      String     @db.Uuid @map("user_id")
-
-  status      TaskStatus @default(pending)
-  title       String
-  description String?
-  feedback    String?
-  note        String?
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @default(now()) @map("updated_at")
-
-  therapist User @relation("TaskTherapist", fields: [therapistId], references: [id], onDelete: Cascade)
-  user      User @relation("TaskUser", fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("tasks")
-  @@index([therapistId])
-  @@index([userId])
-  @@index([status])
-  @@index([createdAt])
-}
-
-model SocialNetwork {
-  id          String  @id @default(uuid()) @db.Uuid
-  name        String  @unique
-  description String?
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @default(now()) @map("updated_at")
-
-  users SocialNetworkUser[]
-  messages Message[]
-
-  @@map("social_networks")
-  @@index([createdAt])
-}
-
-model SocialNetworkUser {
-  id              String @id @default(uuid()) @db.Uuid
-  socialNetworkId String @db.Uuid @map("social_network_id")
-  userId          String @db.Uuid @map("user_id")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @default(now()) @map("updated_at")
-
-  socialNetwork SocialNetwork @relation(fields: [socialNetworkId], references: [id], onDelete: Cascade)
-  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([socialNetworkId, userId])
-  @@map("social_network_users")
-  @@index([socialNetworkId])
-  @@index([userId])
-}
-
-model Message {
-  id              String  @id @default(uuid()) @db.Uuid
-  senderId        String  @db.Uuid @map("sender_id")
-  recipientId     String? @db.Uuid @map("recipient_id")
-  socialNetworkId String? @db.Uuid @map("social_network_id")
-
-  content String
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @default(now()) @map("updated_at")
-
-  sender        User          @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
-  recipient     User?         @relation("MessageRecipient", fields: [recipientId], references: [id], onDelete: SetNull)
-  socialNetwork SocialNetwork? @relation(fields: [socialNetworkId], references: [id], onDelete: Cascade)
-
-  @@map("messages")
-  @@index([senderId, createdAt])
-  @@index([recipientId, createdAt])
-  @@index([socialNetworkId, createdAt])
-}
-
-model Child {
-  id                     String  @id @default(uuid()) @db.Uuid
-  responsibleId          String  @db.Uuid @map("responsible_id")
-  secondaryResponsibleId String? @db.Uuid @map("secondary_responsible_id")
-
-  name        String
-  age         Int
-  birthDate   DateTime @map("birth_date")
-  observation String?
-
-  accessCode String @unique @map("access_code")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @default(now()) @map("updated_at")
-
-  responsible          User  @relation("ChildResponsible", fields: [responsibleId], references: [id], onDelete: Cascade)
-  secondaryResponsible User? @relation("ChildSecondaryResponsible", fields: [secondaryResponsibleId], references: [id], onDelete: SetNull)
-
-  @@map("children")
-  @@index([responsibleId])
-  @@index([secondaryResponsibleId])
-  @@index([accessCode])
-  @@index([createdAt])
 }

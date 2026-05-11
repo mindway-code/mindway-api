@@ -4,6 +4,7 @@ import { mockReq, mockRes } from "../helpers/express.js";
 const childrenService = {
   createChildService: jest.fn<Promise<any>, [any]>(),
   listChildrenService: jest.fn<Promise<any>, [any]>(),
+  listMyChildrenService: jest.fn<Promise<any>, [any]>(),
   getChildByIdService: jest.fn<Promise<any>, [any]>(),
   updateChildService: jest.fn<Promise<any>, [any]>(),
   deleteChildService: jest.fn<Promise<any>, [any]>(),
@@ -36,4 +37,3 @@ describe("controllers: children", () => {
     );
   });
 });
-

@@ -11,6 +11,9 @@ import socialNetworkRoutes from "./modules/socialNetworks/socialNetwork.routes.j
 import socialNetworkUserRoutes  from "./modules/socialNetworkUsers/socialNetworkUser.routes.js";
 import messagesRoutes from "./modules/messages/messages.routes.js";
 import childrenRoutes from "./modules/children/children.routes.js";
+import anamnesisRoutes from "./modules/anamnesis/anamnesis.routes.js";
+import associationChildrenRoutes from "./modules/associationChildren/associationChildren.routes.js";
+import reportsChildrenRoutes from "./modules/reportsChildren/reportsChildren.routes.js";
 
 export const v1Routes = Router();
 
@@ -23,7 +26,10 @@ v1Routes.use(taskRoutes);
 v1Routes.use(socialNetworkRoutes);
 v1Routes.use(socialNetworkUserRoutes);
 v1Routes.use(messagesRoutes);
+v1Routes.use(associationChildrenRoutes);
 v1Routes.use(childrenRoutes);
+v1Routes.use(anamnesisRoutes);
+v1Routes.use(reportsChildrenRoutes);
 
 v1Routes.get('/health', authRateLimiter,
   (_req, res) => {

@@ -59,6 +59,13 @@ export async function getChildByAccessCode(accessCode: string): Promise<ChildRec
   }) as Promise<ChildRecord | null>;
 }
 
+export async function getChildByAccessCodeWithAccessCode(accessCode: string): Promise<ChildWithAccessCodeRecord | null> {
+  return prisma.child.findUnique({
+    where: { accessCode },
+    select: childWithAccessCodeSelect,
+  }) as Promise<ChildWithAccessCodeRecord | null>;
+}
+
 export async function getChildIdByAccessCode(accessCode: string): Promise<{ id: string } | null> {
   return prisma.child.findUnique({
     where: { accessCode },
@@ -87,6 +94,45 @@ export async function listChildren(params: ListChildrenParams): Promise<ListChil
   ]);
 
   return { items: items as unknown as ChildWithAccessCodeRecord[], total };
+}
+
+export async function listMyAssociatedChildren(params: ListChildrenParams): Promise<ListChildrenResult> {
+  const { skip, take, requesterUserId, isAdmin } = params;
+
+  const where = isAdmin
+  ? {}
+  : {
+      OR: [{ associatedUsers: { some: { userId: requesterUserId } } }],
+    };
+
+  const [items, total] = await prisma.$transaction([
+    prisma.child.findMany({
+      where,
+      skip,
+      take,
+      orderBy: { createdAt: "desc" },
+      select: childWithAccessCodeSelect,
+    }),
+    prisma.child.count({ where }),
+  ]);
+
+  return { items: items as unknown as ChildWithAccessCodeRecord[], total };
+}
+
+export async function listChildrenAccessibleByUser(userId: string): Promise<ChildWithAccessCodeRecord[]> {
+  const items = await prisma.child.findMany({
+    where: {
+      OR: [
+        { responsibleId: userId },
+        { secondaryResponsibleId: userId },
+        { associatedUsers: { some: { userId } } },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+    select: childWithAccessCodeSelect,
+  });
+
+  return items as unknown as ChildWithAccessCodeRecord[];
 }
 
 export async function updateChild(id: string, input: UpdateChildInput): Promise<ChildWithAccessCodeRecord> {
@@ -119,8 +165,11 @@ export default {
   createChild,
   getChildById,
   getChildByAccessCode,
+  getChildByAccessCodeWithAccessCode,
   getChildIdByAccessCode,
   listChildren,
+  listMyAssociatedChildren,
+  listChildrenAccessibleByUser,
   updateChild,
   deleteChild,
 };

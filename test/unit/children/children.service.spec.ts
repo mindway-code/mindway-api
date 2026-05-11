@@ -71,6 +71,21 @@ describe("children: services", () => {
     expect(repo.createChild).toHaveBeenCalledWith(expect.objectContaining({ responsibleId: "u2", accessCode: "ABCDEFGH" }));
   });
 
+  it("admin can create child for self when responsibleId is omitted", async () => {
+    repo.findUserById.mockResolvedValue({ id: "admin-1" });
+    repo.getChildIdByAccessCode.mockResolvedValue(null);
+    codes.generateAccessCode.mockReturnValue("ABCDEFGH");
+    repo.createChild.mockResolvedValue({ id: "c1", accessCode: "ABCDEFGH", responsibleId: "admin-1" });
+
+    await services.createChildService({
+      requesterId: "admin-1",
+      requesterRole: "admin" as any,
+      dto: { name: "Kid", age: 8, birthDate: "2020-01-01" } as any,
+    });
+
+    expect(repo.createChild).toHaveBeenCalledWith(expect.objectContaining({ responsibleId: "admin-1" }));
+  });
+
   it("common user can create child for self (responsibleId forced)", async () => {
     repo.findUserById.mockResolvedValue({ id: "u1" });
     repo.getChildIdByAccessCode.mockResolvedValue(null);
@@ -183,4 +198,3 @@ describe("children: services", () => {
     expect(repo.getChildIdByAccessCode).toHaveBeenCalledTimes(2);
   });
 });
-

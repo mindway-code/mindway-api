@@ -9,7 +9,8 @@ export function generateAccessCode(length: number = DEFAULT_LENGTH): string {
 
   let out = "";
   for (let i = 0; i < target; i++) {
-    out += ALPHABET[bytes[i] % ALPHABET.length];
+    const byte = bytes[i] ?? 0;
+    out += ALPHABET.charAt(byte % ALPHABET.length);
   }
   return out;
 }

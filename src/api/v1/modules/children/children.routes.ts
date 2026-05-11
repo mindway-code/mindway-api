@@ -16,6 +16,7 @@ import {
   getChildByAccessCodeController,
   getChildByIdController,
   listChildrenController,
+  listMyChildrenController,
   updateChildController,
 } from "./children.controller.js";
 
@@ -35,6 +36,13 @@ childrenRoutes.get(
   authMiddleware,
   validate(listChildrenQuerySchema, "query"),
   listChildrenController,
+);
+
+childrenRoutes.get(
+  "/children/me",
+  authRateLimiter,
+  authMiddleware,
+  listMyChildrenController,
 );
 
 childrenRoutes.get(

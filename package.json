@@ -20,6 +20,7 @@
     "test:middlewares": "cross-env NODE_ENV=test NODE_OPTIONS=--experimental-vm-modules jest --selectProjects middlewares --runInBand",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:push": "prisma db push",
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
@@ -62,4 +63,4 @@
     "tsx": "^4.21.0",
     "typescript": "^5.7.2"
   }
-} 
+}

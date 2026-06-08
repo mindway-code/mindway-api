@@ -1,4 +1,5 @@
 import { badRequest, notFound } from "../../../../core/errors/httpError.js";
+import { invalidateCachePatterns } from "../../../../utils/cache.js";
 import { getChildByAccessCodeWithAccessCode } from "../../../../infra/database/repositories/children.repository.js";
 import {
   createAssociationChild,
@@ -8,6 +9,8 @@ import type {
   AssociateChildResult,
   CreateAssociationChildDTO,
 } from "./associationChildren.types.js";
+
+const CHILDREN_CACHE_PATTERNS = ["children:list:*", "children:accessible:*"];
 
 export type AssociationChildrenServiceDeps = {
   badRequest: typeof badRequest;
@@ -19,6 +22,10 @@ export type AssociationChildrenServiceDeps = {
 
 function isUniqueConstraintError(err: unknown): boolean {
   return (err as { code?: string } | null)?.code === "P2002";
+}
+
+async function invalidateAssociationChildrenCache() {
+  await invalidateCachePatterns(CHILDREN_CACHE_PATTERNS);
 }
 
 export function makeAssociationChildrenServices(deps: AssociationChildrenServiceDeps) {
@@ -48,11 +55,13 @@ export function makeAssociationChildrenServices(deps: AssociationChildrenService
 
     try {
       const created = await deps.createAssociationChild(requesterId, child.id);
+      await invalidateAssociationChildrenCache();
       return { child, association: created, alreadyHadAccess: false };
     } catch (err) {
       if (!isUniqueConstraintError(err)) throw err;
 
       const afterConflict = await deps.findAssociationByUserAndChild(requesterId, child.id);
+      if (afterConflict) await invalidateAssociationChildrenCache();
       return { child, association: afterConflict ?? null, alreadyHadAccess: true };
     }
   }
@@ -71,4 +80,3 @@ const defaultDeps: AssociationChildrenServiceDeps = {
 export const { associateByAccessCodeService } = makeAssociationChildrenServices(defaultDeps);
 
 export default { associateByAccessCodeService };
-

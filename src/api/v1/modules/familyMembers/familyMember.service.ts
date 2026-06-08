@@ -1,4 +1,5 @@
 import { pagination } from "../../../../utils/pagination.js";
+import { buildCacheKey, getOrSetCached, invalidateCachePatterns } from "../../../../utils/cache.js";
 import { badRequest } from "../../../../core/errors/httpError.js";
 import {
 	createFamilyMember,
@@ -14,6 +15,13 @@ import type {
 	UpdateFamilyMemberDTO,
 } from "./familyMember.types.js";
 
+const FAMILY_MEMBERS_CACHE_TTL_SECONDS = 300;
+const FAMILY_MEMBERS_CACHE_PATTERNS = ["family-members:list:*", "families:list:*", "families:mine:*"];
+
+async function invalidateFamilyMembersCache() {
+	await invalidateCachePatterns(FAMILY_MEMBERS_CACHE_PATTERNS);
+}
+
 export async function listFamilyMembersService(
 	pageRaw: unknown,
 	pageSizeRaw: unknown,
@@ -25,15 +33,28 @@ export async function listFamilyMembersService(
 	const params: any = { skip, take };
 	if (typeof familyIdRaw === "string" && familyIdRaw) params.familyId = familyIdRaw;
 	if (typeof userIdRaw === "string" && userIdRaw) params.userId = userIdRaw;
+	const familyId = typeof familyIdRaw === "string" && familyIdRaw ? familyIdRaw : "all";
+	const userId = typeof userIdRaw === "string" && userIdRaw ? userIdRaw : "all";
+	const cacheKey = buildCacheKey("family-members:list", [
+		["familyId", familyId],
+		["userId", userId],
+		["page", page],
+		["pageSize", pageSize],
+	]);
 
-	const { items, total } = await listFamilyMembers(params);
+	return getOrSetCached({
+		key: cacheKey,
+		ttlSeconds: FAMILY_MEMBERS_CACHE_TTL_SECONDS,
+		load: async () => {
+			const { items, total } = await listFamilyMembers(params);
+			const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-	const totalPages = Math.max(1, Math.ceil(total / pageSize));
-
-	return {
-		items,
-		meta: { pagination: { page, pageSize, total, totalPages } },
-	} as unknown as ListFamilyMembersResponse;
+			return {
+				items,
+				meta: { pagination: { page, pageSize, total, totalPages } },
+			} as unknown as ListFamilyMembersResponse;
+		},
+	});
 }
 
 export async function createFamilyMemberService(dto: CreateFamilyMemberDTO) {
@@ -46,7 +67,10 @@ export async function createFamilyMemberService(dto: CreateFamilyMemberDTO) {
 	if (!role) throw badRequest("Role is required", 400);
 
 	const input = { userId, familyId, role } as CreateFamilyMemberDTO;
-	return createFamilyMember(input);
+	const created = await createFamilyMember(input);
+	await invalidateFamilyMembersCache();
+
+	return created;
 }
 
 export async function getFamilyMemberByIdService(id: string) {
@@ -70,7 +94,10 @@ export async function updateFamilyMemberService(id: string, dto: UpdateFamilyMem
 		...(dto.role !== undefined ? { role: dto.role } : {}),
 	};
 
-	return updateFamilyMember(id, input);
+	const updated = await updateFamilyMember(id, input);
+	await invalidateFamilyMembersCache();
+
+	return updated;
 }
 
 export async function deleteFamilyMemberService(id: string) {
@@ -79,7 +106,10 @@ export async function deleteFamilyMemberService(id: string) {
 	const existing = await getFamilyMemberById(id);
 	if (!existing) throw badRequest("FamilyMember not found", 404);
 
-	return deleteFamilyMember(id);
+	const deleted = await deleteFamilyMember(id);
+	await invalidateFamilyMembersCache();
+
+	return deleted;
 }
 
 export default {

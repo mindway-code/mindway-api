@@ -1,4 +1,5 @@
 import { pagination } from "../../../../utils/pagination.js";
+import { buildCacheKey, getOrSetCached, invalidateCachePatterns } from "../../../../utils/cache.js";
 import { badRequest } from "../../../../core/errors/httpError.js";
 import {
   createAppointment,
@@ -15,6 +16,13 @@ import type {
   UpdateAppointmentInput,
   AppointmentStatus,
 } from "./appointments.types.js";
+
+const APPOINTMENTS_CACHE_TTL_SECONDS = 300;
+const APPOINTMENTS_CACHE_PATTERNS = ["appointments:user:*", "appointments:therapist:*"];
+
+async function invalidateAppointmentsCache() {
+  await invalidateCachePatterns(APPOINTMENTS_CACHE_PATTERNS);
+}
 
 function parseStatus(raw: unknown): AppointmentStatus {
   if (
@@ -52,7 +60,10 @@ export async function createAppointmentService(dto: CreateAppointmentDTO) {
     feedback: dto.feedback ?? null,
   };
 
-  return createAppointment(input);
+  const created = await createAppointment(input);
+  await invalidateAppointmentsCache();
+
+  return created;
 }
 
 export async function listAppointmentsByUserService(
@@ -65,11 +76,23 @@ export async function listAppointmentsByUserService(
 
   const { page, pageSize, skip, take } = pagination(pageRaw, pageSizeRaw);
   const status = parseStatus(statusRaw) ?? undefined;
+  const cacheKey = buildCacheKey("appointments:user", [
+    ["userId", userId],
+    ["status", status],
+    ["page", page],
+    ["pageSize", pageSize],
+  ]);
 
-  const { items, total } = await listAppointmentsByUser(userId, { status, skip, take });
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  return getOrSetCached({
+    key: cacheKey,
+    ttlSeconds: APPOINTMENTS_CACHE_TTL_SECONDS,
+    load: async () => {
+      const { items, total } = await listAppointmentsByUser(userId, { status, skip, take });
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-  return { items, meta: { pagination: { page, pageSize, total, totalPages } } };
+      return { items, meta: { pagination: { page, pageSize, total, totalPages } } };
+    },
+  });
 }
 
 export async function listAppointmentsByTherapistService(
@@ -82,11 +105,23 @@ export async function listAppointmentsByTherapistService(
 
   const { page, pageSize, skip, take } = pagination(pageRaw, pageSizeRaw);
   const status = parseStatus(statusRaw) ?? undefined;
+  const cacheKey = buildCacheKey("appointments:therapist", [
+    ["therapistId", therapistId],
+    ["status", status],
+    ["page", page],
+    ["pageSize", pageSize],
+  ]);
 
-  const { items, total } = await listAppointmentsByTherapist(therapistId, { status, skip, take });
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  return getOrSetCached({
+    key: cacheKey,
+    ttlSeconds: APPOINTMENTS_CACHE_TTL_SECONDS,
+    load: async () => {
+      const { items, total } = await listAppointmentsByTherapist(therapistId, { status, skip, take });
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-  return { items, meta: { pagination: { page, pageSize, total, totalPages } } };
+      return { items, meta: { pagination: { page, pageSize, total, totalPages } } };
+    },
+  });
 }
 
 export async function updateAppointmentService(id: string, dto: UpdateAppointmentDTO) {
@@ -103,12 +138,18 @@ export async function updateAppointmentService(id: string, dto: UpdateAppointmen
     ...(dto.feedback !== undefined ? { feedback: dto.feedback } : {}),
   };
 
-  return updateAppointment(id, input);
+  const updated = await updateAppointment(id, input);
+  await invalidateAppointmentsCache();
+
+  return updated;
 }
 
 export async function deleteAppointmentService(id: string) {
   if (!id) throw badRequest("Appointment id is required", 400);
-  return deleteAppointment(id);
+  const deleted = await deleteAppointment(id);
+  await invalidateAppointmentsCache();
+
+  return deleted;
 }
 
 export default {

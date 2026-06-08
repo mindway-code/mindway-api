@@ -1,4 +1,5 @@
 import { pagination } from "../../../../utils/pagination.js";
+import { invalidateCachePatterns } from "../../../../utils/cache.js";
 import { badRequest, forbidden, notFound } from "../../../../core/errors/httpError.js";
 import type { UserRole } from "../../../../utils/crypto/jwt.js";
 import type { ChildWithAccessCodeRecord } from "../children/children.types.js";
@@ -47,8 +48,14 @@ export type ReportsChildrenServiceDeps = {
   deleteReportsChild: typeof deleteReportsChild;
 };
 
+const CHILDREN_CACHE_PATTERNS = ["children:list:*", "children:accessible:*"];
+
 function isUniqueConstraintError(err: unknown): boolean {
   return (err as { code?: string } | null)?.code === "P2002";
+}
+
+async function invalidateChildrenCache() {
+  await invalidateCachePatterns(CHILDREN_CACHE_PATTERNS);
 }
 
 async function buildChildAccessContext(deps: ReportsChildrenServiceDeps, params: { requesterId: string; requesterRole: UserRole; childId: string }): Promise<ChildAccessContext> {
@@ -136,8 +143,10 @@ export function makeReportsChildrenServices(deps: ReportsChildrenServiceDeps) {
 
       try {
         await deps.createAssociationChild(requesterId, childId);
+        await invalidateChildrenCache();
       } catch (err) {
         if (!isUniqueConstraintError(err)) throw err;
+        await invalidateChildrenCache();
       }
     }
 
@@ -249,4 +258,3 @@ export default {
   updateReportService,
   deleteReportService,
 };
-

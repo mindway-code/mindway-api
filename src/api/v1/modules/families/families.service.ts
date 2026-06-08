@@ -1,4 +1,5 @@
 import { pagination } from "../../../../utils/pagination.js";
+import { buildCacheKey, getOrSetCached, invalidateCachePatterns } from "../../../../utils/cache.js";
 import { badRequest } from "../../../../core/errors/httpError.js";
 import {
   createFamily,
@@ -18,31 +19,58 @@ import type {
   UpdateFamilyInput,
 } from "./families.types.js";
 
+const FAMILIES_CACHE_TTL_SECONDS = 300;
+const FAMILIES_CACHE_PATTERNS = ["families:list:*", "families:mine:*"];
+
+async function invalidateFamiliesCache() {
+  await invalidateCachePatterns(FAMILIES_CACHE_PATTERNS);
+}
+
 export async function listFamiliesService(pageRaw: unknown, pageSizeRaw: unknown): Promise<ListFamiliesResponse> {
   const { page, pageSize, skip, take } = pagination(pageRaw, pageSizeRaw);
+  const cacheKey = buildCacheKey("families:list", [
+    ["page", page],
+    ["pageSize", pageSize],
+  ]);
 
-  const { items, total } = await listFamilies({ skip, take });
+  return getOrSetCached({
+    key: cacheKey,
+    ttlSeconds: FAMILIES_CACHE_TTL_SECONDS,
+    load: async () => {
+      const { items, total } = await listFamilies({ skip, take });
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-
-  return {
-    items,
-    meta: { pagination: { page, pageSize, total, totalPages } },
-  };
+      return {
+        items,
+        meta: { pagination: { page, pageSize, total, totalPages } },
+      };
+    },
+  });
 }
 
 export async function listMyFamiliesService(userId: string, pageRaw: unknown, pageSizeRaw: unknown): Promise<ListMyFamiliesResponse> {
   if (!userId) throw badRequest("userId is required", 400);
 
   const { page, pageSize, skip, take } = pagination(pageRaw, pageSizeRaw);
+  const cacheKey = buildCacheKey("families:mine", [
+    ["userId", userId],
+    ["page", page],
+    ["pageSize", pageSize],
+  ]);
 
-  const { items, total } = await listFamiliesByUserId(userId, { skip, take });
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  return getOrSetCached({
+    key: cacheKey,
+    ttlSeconds: FAMILIES_CACHE_TTL_SECONDS,
+    load: async () => {
+      const { items, total } = await listFamiliesByUserId(userId, { skip, take });
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-  return {
-    items,
-    meta: { pagination: { page, pageSize, total, totalPages } },
-  };
+      return {
+        items,
+        meta: { pagination: { page, pageSize, total, totalPages } },
+      };
+    },
+  });
 }
 
 export async function createFamilyService(dto: CreateFamilyDTO) {
@@ -50,7 +78,10 @@ export async function createFamilyService(dto: CreateFamilyDTO) {
   if (!name) throw badRequest("Name is required", 400);
 
   const input: CreateFamilyInput = { name };
-  return createFamily(input);
+  const created = await createFamily(input);
+  await invalidateFamiliesCache();
+
+  return created;
 }
 
 export async function getFamilyByIdService(id: string) {
@@ -77,7 +108,10 @@ export async function updateFamilyService(id: string, dto: UpdateFamilyDTO) {
     throw badRequest("Name cannot be empty", 400);
   }
 
-  return updateFamily(id, input);
+  const updated = await updateFamily(id, input);
+  await invalidateFamiliesCache();
+
+  return updated;
 }
 
 export async function deleteFamilyService(id: string) {
@@ -86,7 +120,10 @@ export async function deleteFamilyService(id: string) {
   const existing = await getFamilyById(id);
   if (!existing) throw badRequest("Family not found", 404);
 
-  return deleteFamily(id);
+  const deleted = await deleteFamily(id);
+  await invalidateFamiliesCache();
+
+  return deleted;
 }
 
 export default {

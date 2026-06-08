@@ -1,4 +1,5 @@
 import { pagination } from "../../../../utils/pagination.js";
+import { buildCacheKey, getOrSetCached, invalidateCachePatterns } from "../../../../utils/cache.js";
 import { badRequest, conflict, forbidden, notFound } from "../../../../core/errors/httpError.js";
 import type { UserRole } from "../../../../utils/crypto/jwt.js";
 import { generateAccessCode } from "../../../../utils/accessCode.js";
@@ -42,6 +43,14 @@ export type ChildrenServiceDeps = {
   updateChild: typeof updateChild;
   deleteChild: typeof deleteChild;
 };
+
+const CHILDREN_CACHE_TTL_SECONDS = 300;
+const CHILDREN_LIST_CACHE_PATTERN = "children:list:*";
+const CHILDREN_ACCESSIBLE_CACHE_PATTERN = "children:accessible:*";
+
+async function invalidateChildrenCache() {
+  await invalidateCachePatterns([CHILDREN_LIST_CACHE_PATTERN, CHILDREN_ACCESSIBLE_CACHE_PATTERN]);
+}
 
 function parseDate(deps: ChildrenServiceDeps, raw: string | Date): Date {
   const date = typeof raw === "string" ? new Date(raw) : raw;
@@ -111,7 +120,10 @@ export function makeChildrenServices(deps: ChildrenServiceDeps) {
       accessCode,
     };
 
-    return deps.createChild(input);
+    const created = await deps.createChild(input);
+    await invalidateChildrenCache();
+
+    return created;
   }
 
   async function listChildrenService(params: { requesterId: string; requesterRole: UserRole; pageRaw: unknown; pageSizeRaw: unknown }): Promise<ListChildrenResponse> {
@@ -119,26 +131,44 @@ export function makeChildrenServices(deps: ChildrenServiceDeps) {
     if (!requesterId) throw deps.badRequest("requesterId is required");
 
     const { page, pageSize, skip, take } = deps.pagination(pageRaw, pageSizeRaw);
-
     const isAdmin = requesterRole === "admin";
-    if (!isAdmin && requesterRole !== "common") {
-      const { items, total } = await deps.listMyAssociatedChildren({ skip, take, requesterUserId: requesterId, isAdmin });
-      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const scope = !isAdmin && requesterRole !== "common" ? "associated" : "managed";
+    const cacheKey = buildCacheKey("children:list", [
+      ["scope", scope],
+      ["requesterId", requesterId],
+      ["requesterRole", requesterRole],
+      ["page", page],
+      ["pageSize", pageSize],
+    ]);
 
-      return { items, meta: { pagination: { page, pageSize, total, totalPages } } };
-    }
+    return getOrSetCached({
+      key: cacheKey,
+      ttlSeconds: CHILDREN_CACHE_TTL_SECONDS,
+      load: async () => {
+        if (scope === "associated") {
+          const { items, total } = await deps.listMyAssociatedChildren({ skip, take, requesterUserId: requesterId, isAdmin });
+          const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-    const { items, total } = await deps.listChildren({ skip, take, requesterUserId: requesterId, isAdmin });
-    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+          return { items, meta: { pagination: { page, pageSize, total, totalPages } } };
+        }
 
-    return { items, meta: { pagination: { page, pageSize, total, totalPages } } };
+        const { items, total } = await deps.listChildren({ skip, take, requesterUserId: requesterId, isAdmin });
+        const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+        return { items, meta: { pagination: { page, pageSize, total, totalPages } } };
+      },
+    });
   }
 
   async function listMyChildrenService(params: { requesterId: string }): Promise<ChildWithAccessCodeRecord[]> {
     const { requesterId } = params;
     if (!requesterId) throw deps.badRequest("requesterId is required");
 
-    return deps.listChildrenAccessibleByUser(requesterId);
+    return getOrSetCached({
+      key: buildCacheKey("children:accessible", [["requesterId", requesterId]]),
+      ttlSeconds: CHILDREN_CACHE_TTL_SECONDS,
+      load: () => deps.listChildrenAccessibleByUser(requesterId),
+    });
   }
 
   async function getChildByIdService(params: { requesterId: string; requesterRole: UserRole; childId: string }): Promise<ChildWithAccessCodeRecord> {
@@ -196,7 +226,10 @@ export function makeChildrenServices(deps: ChildrenServiceDeps) {
       if (!secondary) throw deps.notFound("Secondary responsible user not found");
     }
 
-    return deps.updateChild(childId, input);
+    const updated = await deps.updateChild(childId, input);
+    await invalidateChildrenCache();
+
+    return updated;
   }
 
   async function deleteChildService(params: { requesterId: string; requesterRole: UserRole; childId: string }) {
@@ -211,7 +244,10 @@ export function makeChildrenServices(deps: ChildrenServiceDeps) {
 
     if (!canManageChild(requesterRole, requesterId, existing)) throw deps.forbidden();
 
-    return deps.deleteChild(childId);
+    const deleted = await deps.deleteChild(childId);
+    await invalidateChildrenCache();
+
+    return deleted;
   }
 
   return {

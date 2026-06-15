@@ -17,6 +17,12 @@ const reportsChildSelect = {
   behavior: true,
   difficulty: true,
   recommendation: true,
+  user: {
+    select: {
+      name: true,
+      email: true,
+    },
+  },
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -94,4 +100,3 @@ export default {
   updateReportsChild,
   deleteReportsChild,
 };
-

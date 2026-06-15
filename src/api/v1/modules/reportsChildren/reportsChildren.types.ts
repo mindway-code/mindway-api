@@ -9,6 +9,10 @@ export type ReportsChildRecord = {
   behavior: string | null;
   difficulty: string | null;
   recommendation: string | null;
+  user?: {
+    name: string | null;
+    email: string | null;
+  } | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -61,4 +65,3 @@ export type ListReportsChildrenResponse = {
   items: ReportsChildRecord[];
   meta: { pagination: { page: number; pageSize: number; total: number; totalPages: number } };
 };
-

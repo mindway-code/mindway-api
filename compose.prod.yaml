@@ -1,0 +1,18 @@
+name: mindway-prod
+
+services:
+  api:
+    image: "${API_IMAGE:-mindway-api:prod}"
+    build:
+      context: .
+      target: prod
+    env_file:
+      - .env.prod
+    environment:
+      APP_ENV: prod
+      NODE_ENV: production
+    command: ["sh", "-c", "npm run db:migrate:prod && npm start"]
+    init: true
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3333}:3333"

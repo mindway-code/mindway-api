@@ -1,0 +1,63 @@
+export const insomniaCollection = {
+  _type: "export",
+  __export_format: 4,
+  __export_date: new Date().toISOString(),
+  __export_source: "mindway-api",
+  resources: [
+    {
+      _id: "wrk_mindway",
+      _type: "workspace",
+      name: "Mindway API",
+      description: "Generated from /api/openapi.json.",
+      scope: "collection",
+    },
+    {
+      _id: "env_mindway_base",
+      _type: "environment",
+      parentId: "wrk_mindway",
+      name: "Base Environment",
+      data: {
+        base_url: "http://localhost:3333/api",
+        access_token: "",
+      },
+    },
+    {
+      _id: "req_openapi",
+      _type: "request",
+      parentId: "wrk_mindway",
+      name: "OpenAPI JSON",
+      method: "GET",
+      url: "{{ _.base_url }}/openapi.json",
+    },
+    {
+      _id: "req_health",
+      _type: "request",
+      parentId: "wrk_mindway",
+      name: "Health",
+      method: "GET",
+      url: "{{ _.base_url }}/health",
+    },
+    {
+      _id: "req_login",
+      _type: "request",
+      parentId: "wrk_mindway",
+      name: "Login",
+      method: "POST",
+      url: "{{ _.base_url }}/auth/login",
+      headers: [{ name: "Content-Type", value: "application/json" }],
+      body: {
+        mimeType: "application/json",
+        text: '{\n  "email": "user@example.com",\n  "password": "password"\n}',
+      },
+    },
+    {
+      _id: "req_users_me",
+      _type: "request",
+      parentId: "wrk_mindway",
+      name: "Users Me",
+      method: "GET",
+      url: "{{ _.base_url }}/users/me",
+      headers: [{ name: "Authorization", value: "Bearer {{ _.access_token }}" }],
+    },
+  ],
+} as const;

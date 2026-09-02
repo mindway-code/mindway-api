@@ -3,6 +3,15 @@ import { z } from "zod";
 const appEnvironments = ["dev", "prod"] as const;
 const optionalUrl = z.union([z.string().url(), z.literal("")]).optional().default("");
 const optionalEmail = z.union([z.string().email(), z.literal("")]).optional().default("");
+const envBoolean = z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true") return true;
+  if (normalized === "false") return false;
+
+  return value;
+}, z.boolean());
 
 function databaseHost(value: string) {
   try {
@@ -36,7 +45,7 @@ const envSchema = z
     JWT_REFRESH_EXPIRES_IN: z.string().default("30d"),
 
     COOKIE_NAME: z.string().default("refresh_token"),
-    COOKIE_SECURE: z.coerce.boolean().default(false),
+    COOKIE_SECURE: envBoolean.default(false),
     COOKIE_DOMAIN: z.string().optional().default(""),
     COOKIE_SAMESITE: z.enum(["lax", "strict", "none"]).default("lax"),
     COOKIE_PATH: z.string().default("/"),

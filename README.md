@@ -42,43 +42,61 @@ docker compose --env-file .env.dev -f compose.dev.yaml up -d postgres redis
 
 ### 5. Prepare Prisma
 
-Create or apply the development migration and regenerate Prisma Client inside the API container:
+Create or apply the development migration and regenerate Prisma Client. **Wait for PostgreSQL to be healthy first** (check logs below):
 
 ```powershell
-docker compose --env-file .env.dev -f compose.dev.yaml run --rm api npm run db:migrate:dev
+# Check that postgres and redis containers are running
+docker compose --env-file .env.dev -f compose.dev.yaml logs postgres redis
+
+# Once healthy, run migrations
+npm run db:migrate:dev
 ```
 
 After every Prisma schema change, run the same command. To discard local data and recreate the dev database from committed migrations:
 
 ```powershell
-docker compose --env-file .env.dev -f compose.dev.yaml run --rm api npm run db:reset:dev
+npm run db:reset:dev
 ```
 
-`db:reset:dev` is destructive and is only intended for the local dev database.
+> ⚠️ `db:reset:dev` is destructive and is only intended for the local dev database.
 
 ### 6. Run the API
 
-Run locally through Node:
+**Option A: Local Node (recommended for development)**
 
 ```powershell
 npm run dev
 ```
 
-Or run the API inside Docker (recommended when PostgreSQL and Redis are already in Compose):
+This starts a watch-mode server with hot reload. The app connects to PostgreSQL and Redis running in Docker Compose.
+
+**Option B: Inside Docker (all-in-one)**
 
 ```powershell
 docker compose --env-file .env.dev -f compose.dev.yaml up --build api
 ```
 
-The dev container runs `db:generate` before watch mode. Migration creation and database resets remain explicit commands.
+This runs the entire stack (postgres, redis, api) in containers.
 
-Server listens on `PORT` (default: `3333`). Health check:
+---
+
+### Health Check
+
+Server listens on `PORT` (default: `3333`). Verify it's running:
 
 ```powershell
 curl http://localhost:3333/api/health
 ```
 
-OpenAPI:
+Expected response:
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-09-01T00:00:00.000Z"
+}
+```
+
+View the OpenAPI schema:
 
 ```powershell
 curl http://localhost:3333/api/openapi.json
@@ -86,7 +104,44 @@ curl http://localhost:3333/api/openapi.json
 
 ---
 
-## Overview
+### Troubleshooting Setup
+
+**"Database (not available) does not exist"** 
+- PostgreSQL container is not running. Check:
+  ```powershell
+  docker compose --env-file .env.dev -f compose.dev.yaml ps
+  ```
+- Start it with:
+  ```powershell
+  docker compose --env-file .env.dev -f compose.dev.yaml up -d postgres redis
+  ```
+
+**"Cannot GET /api/health"**
+- API server is not running. Start with `npm run dev`
+
+**Migrations failed**
+- Check `.env.dev` has correct `DATABASE_URL` pointing to `localhost:5432`
+- Ensure PostgreSQL is healthy: `docker compose --env-file .env.dev -f compose.dev.yaml logs postgres | tail -20`
+
+**Port 3333 already in use**
+- Change in `.env.dev`: `PORT=3334`
+- Or kill the other process: `Get-Process -Name node | Stop-Process -Force`
+
+---
+
+## Recent Changes (Latest PR)
+
+### Dashboard & Child Profile Fixes
+- **Backend**: Fixed Prisma startup order — now connects to database before starting the server
+- **Backend**: Updated `.env.dev` to use local PostgreSQL (removed Supabase pooler reference)
+- **Frontend**: Removed mock data from child selection dropdown
+- **Frontend**: Implemented `LatestUpdateService` to fetch real latest report (instead of hardcoded "última atualização")
+- **Frontend**: Fixed null-safety in `child-profile.component.html` for nested properties
+- **Frontend**: Dashboard now dynamically loads children and latest updates via real services
+
+All changes are environment-aware and tested for build validity.
+
+---
 
 ### What it does
 

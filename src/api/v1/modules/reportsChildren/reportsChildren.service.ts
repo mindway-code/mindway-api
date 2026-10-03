@@ -90,8 +90,12 @@ async function ensureAccessByChildId(deps: ReportsChildrenServiceDeps, params: {
 function canManageReport(params: { ctx: ChildAccessContext; requesterId: string; report: { userId: string } }) {
   const { ctx, requesterId, report } = params;
   if (ctx.isAdmin) return true;
-  if (ctx.isResponsible || ctx.isSecondaryResponsible) return true;
+  if (ctx.isResponsible || ctx.isSecondaryResponsible) return false;
   return report.userId === requesterId;
+}
+
+function canAuthorReports(role: UserRole): boolean {
+  return role === "admin" || role === "enterprise" || role === "professional" || role === "therapist";
 }
 
 export function makeReportsChildrenServices(deps: ReportsChildrenServiceDeps) {
@@ -124,13 +128,12 @@ export function makeReportsChildrenServices(deps: ReportsChildrenServiceDeps) {
     const { requesterId, requesterRole, childId, dto } = params;
     if (!requesterId) throw deps.badRequest("requesterId is required");
     if (!childId) throw deps.badRequest("childId is required");
+    if (!canAuthorReports(requesterRole)) throw deps.forbidden("Only school and health professionals can create reports.");
 
     const title = dto?.title?.trim();
     if (!title) throw deps.badRequest("title is required");
 
-    // Access rule:
-    // - Responsible/secondary/associated/admin can create.
-    // - If requester has no access, allow creating an association only when a valid accessCode is provided for this child.
+    // A school or health professional may associate with this child using a valid access code.
     const baseCtx = await buildChildAccessContext(deps, { requesterId, requesterRole, childId });
     if (!baseCtx.hasAccess) {
       const accessCode = dto?.accessCode?.trim();

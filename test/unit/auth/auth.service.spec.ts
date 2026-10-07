@@ -3,11 +3,11 @@ import { makeAuthServices } from "../../../src/api/v1/modules/auth/auth.service.
 import { badRequest } from "../../../src/core/errors/httpError.js";
 
 const authRepo = {
-  findAuthUserByEmail: jest.fn<Promise<any>, [string]>(),
-  createLocalUser: jest.fn<Promise<any>, [any]>(),
-  createRefreshTokenRow: jest.fn<Promise<any>, [any]>(),
-  findActiveRefreshTokensByUserId: jest.fn<Promise<any[]>, [string]>(),
-  revokeRefreshTokenById: jest.fn<Promise<any>, [string]>(),
+  findAuthUserByEmail: jest.fn<(email: string) => Promise<any>>(),
+  createLocalUser: jest.fn<(input: any) => Promise<any>>(),
+  createRefreshTokenRow: jest.fn<(input: any) => Promise<any>>(),
+  findActiveRefreshTokensByUserId: jest.fn<(id: string) => Promise<any[]>>(),
+  revokeRefreshTokenById: jest.fn<(id: string) => Promise<any>>(),
 };
 
 const cryptoHash = {
@@ -21,7 +21,7 @@ const jwtAccess = {
 
 const refreshToken = {
   signRefreshToken: jest.fn(() => "refresh-token"),
-  verifyRefreshToken: jest.fn<any, [string]>(),
+  verifyRefreshToken: jest.fn<(token: string) => any>(),
 };
 
 const { registerService } = makeAuthServices({

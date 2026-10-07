@@ -2,10 +2,10 @@ import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 import { mockReq, mockRes } from "../helpers/express.js";
 
 const authService = {
-  loginService: jest.fn<Promise<any>, [string, string]>(),
-  registerService: jest.fn<Promise<any>, [any]>(),
-  refreshService: jest.fn<Promise<any>, [string]>(),
-  logoutService: jest.fn<Promise<void>, [string | undefined]>(),
+  loginService: jest.fn<(email: string, password: string) => Promise<any>>(),
+  registerService: jest.fn<(input: any) => Promise<any>>(),
+  refreshService: jest.fn<(token: string) => Promise<any>>(),
+  logoutService: jest.fn<(token?: string) => Promise<void>>(),
 };
 
 const cookie = {

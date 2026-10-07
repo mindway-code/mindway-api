@@ -6,6 +6,7 @@
 - **Middlewares** (`test/middlewares/`): Express middleware behavior with mocked req/res/next.
 - **Controllers** (`test/controllers/`): HTTP handlers in isolation, mocking services + cookie helpers.
 - **Integration** (`test/integration/`): exercise `createApp()` + routes with `supertest`, while mocking DB/Redis/email/rate-limit as needed.
+- **Database integration** (`test/database/`): exercise Prisma repositories and constraints against an isolated PostgreSQL `*_test` database.
 
 ## Naming conventions
 
@@ -50,5 +51,19 @@ This project is ESM (`"type": "module"` + TS `NodeNext`). For reliable mocking, 
 - `npm run test`
 - `npm run test:unit`
 - `npm run test:integration`
+- `npm run test:database` (requires a migrated local `*_test` PostgreSQL database)
 - `npm run test:middlewares`
 - `npm run test:controllers`
+
+## Local database integration
+
+The database suite refuses non-local hosts and database names that do not end in `_test`.
+
+```powershell
+docker compose -f compose.test.yaml up -d --wait
+$env:DATABASE_URL = "postgresql://user:pass@localhost:55432/mindway_test?schema=public"
+$env:DIRECT_URL = $env:DATABASE_URL
+npm run db:migrate:test
+npm run test:database
+docker compose -f compose.test.yaml down
+```

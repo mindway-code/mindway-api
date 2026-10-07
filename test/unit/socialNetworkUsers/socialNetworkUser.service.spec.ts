@@ -2,11 +2,11 @@ import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 import { fileURLToPath } from "node:url";
 
 const repo = {
-  createSocialNetworkUser: jest.fn(),
-  listSocialNetworkUsers: jest.fn(),
-  getSocialNetworkUserById: jest.fn(),
-  updateSocialNetworkUser: jest.fn(),
-  deleteSocialNetworkUser: jest.fn(),
+  createSocialNetworkUser: jest.fn<(...args: any[]) => any>(),
+  listSocialNetworkUsers: jest.fn<(...args: any[]) => any>(),
+  getSocialNetworkUserById: jest.fn<(...args: any[]) => any>(),
+  updateSocialNetworkUser: jest.fn<(...args: any[]) => any>(),
+  deleteSocialNetworkUser: jest.fn<(...args: any[]) => any>(),
 };
 
 jest.unstable_mockModule(

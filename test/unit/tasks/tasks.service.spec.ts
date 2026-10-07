@@ -2,11 +2,11 @@ import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 import { fileURLToPath } from "node:url";
 
 const repo = {
-  createTask: jest.fn(),
-  listTasksByUser: jest.fn(),
-  listTasksByTherapist: jest.fn(),
-  updateTask: jest.fn(),
-  deleteTask: jest.fn(),
+  createTask: jest.fn<(...args: any[]) => any>(),
+  listTasksByUser: jest.fn<(...args: any[]) => any>(),
+  listTasksByTherapist: jest.fn<(...args: any[]) => any>(),
+  updateTask: jest.fn<(...args: any[]) => any>(),
+  deleteTask: jest.fn<(...args: any[]) => any>(),
 };
 
 jest.unstable_mockModule(

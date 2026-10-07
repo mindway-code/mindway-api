@@ -3,18 +3,20 @@ import { makeChildrenServices } from "../../../src/api/v1/modules/children/child
 import { badRequest, conflict, forbidden, notFound } from "../../../src/core/errors/httpError.js";
 
 const repo = {
-  findUserById: jest.fn<Promise<any>, [string]>(),
-  createChild: jest.fn<Promise<any>, [any]>(),
-  getChildById: jest.fn<Promise<any>, [string, any]>(),
-  getChildByAccessCode: jest.fn<Promise<any>, [string]>(),
-  getChildIdByAccessCode: jest.fn<Promise<any>, [string]>(),
-  listChildren: jest.fn<Promise<any>, [any]>(),
-  updateChild: jest.fn<Promise<any>, [string, any]>(),
-  deleteChild: jest.fn<Promise<any>, [string]>(),
+  findUserById: jest.fn<(id: string) => Promise<any>>(),
+  createChild: jest.fn<(input: any) => Promise<any>>(),
+  getChildById: jest.fn<(id: string, options: any) => Promise<any>>(),
+  getChildByAccessCode: jest.fn<(code: string) => Promise<any>>(),
+  getChildIdByAccessCode: jest.fn<(code: string) => Promise<any>>(),
+  listChildren: jest.fn<(params: any) => Promise<any>>(),
+  listChildrenAccessibleByUser: jest.fn<(userId: string) => Promise<any>>(),
+  listMyAssociatedChildren: jest.fn<(params: any) => Promise<any>>(),
+  updateChild: jest.fn<(id: string, input: any) => Promise<any>>(),
+  deleteChild: jest.fn<(id: string) => Promise<any>>(),
 };
 
 const codes = {
-  generateAccessCode: jest.fn<string, [number]>(),
+  generateAccessCode: jest.fn<(length: number) => string>(),
 };
 
 const pagination = {
@@ -38,6 +40,8 @@ const services = makeChildrenServices({
   getChildByAccessCode: repo.getChildByAccessCode as any,
   getChildIdByAccessCode: repo.getChildIdByAccessCode as any,
   listChildren: repo.listChildren as any,
+  listChildrenAccessibleByUser: repo.listChildrenAccessibleByUser as any,
+  listMyAssociatedChildren: repo.listMyAssociatedChildren as any,
   updateChild: repo.updateChild as any,
   deleteChild: repo.deleteChild as any,
 });
@@ -50,6 +54,8 @@ describe("children: services", () => {
     repo.getChildByAccessCode.mockReset();
     repo.getChildIdByAccessCode.mockReset();
     repo.listChildren.mockReset();
+    repo.listChildrenAccessibleByUser.mockReset();
+    repo.listMyAssociatedChildren.mockReset();
     repo.updateChild.mockReset();
     repo.deleteChild.mockReset();
     codes.generateAccessCode.mockReset();
@@ -128,6 +134,38 @@ describe("children: services", () => {
     });
 
     expect(repo.updateChild).toHaveBeenCalledWith("c1", expect.objectContaining({ name: "Updated" }));
+  });
+
+  it("responsible can read own child by id", async () => {
+    repo.getChildById.mockResolvedValue({ id: "c1", responsibleId: "u1", secondaryResponsibleId: null });
+
+    await expect(
+      services.getChildByIdService({ requesterId: "u1", requesterRole: "common" as any, childId: "c1" }),
+    ).resolves.toEqual(expect.objectContaining({ id: "c1" }));
+  });
+
+  it("secondary responsible can read child by id", async () => {
+    repo.getChildById.mockResolvedValue({ id: "c1", responsibleId: "u1", secondaryResponsibleId: "u2" });
+
+    await expect(
+      services.getChildByIdService({ requesterId: "u2", requesterRole: "common" as any, childId: "c1" }),
+    ).resolves.toEqual(expect.objectContaining({ id: "c1" }));
+  });
+
+  it("unrelated common user cannot read child by id", async () => {
+    repo.getChildById.mockResolvedValue({ id: "c1", responsibleId: "u1", secondaryResponsibleId: null });
+
+    await expect(
+      services.getChildByIdService({ requesterId: "u3", requesterRole: "common" as any, childId: "c1" }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN", statusCode: 403 });
+  });
+
+  it("admin can read any child by id", async () => {
+    repo.getChildById.mockResolvedValue({ id: "c1", responsibleId: "u1", secondaryResponsibleId: null });
+
+    await expect(
+      services.getChildByIdService({ requesterId: "admin-1", requesterRole: "admin" as any, childId: "c1" }),
+    ).resolves.toEqual(expect.objectContaining({ id: "c1" }));
   });
 
   it("responsible cannot update another user's child", async () => {

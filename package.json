@@ -19,11 +19,13 @@
     "test:coverage": "cross-env APP_ENV=dev NODE_ENV=test NODE_OPTIONS=--experimental-vm-modules jest --coverage --runInBand",
     "test:unit": "cross-env APP_ENV=dev NODE_ENV=test NODE_OPTIONS=--experimental-vm-modules jest --selectProjects unit --runInBand",
     "test:integration": "cross-env APP_ENV=dev NODE_ENV=test NODE_OPTIONS=--experimental-vm-modules jest --selectProjects integration --runInBand",
+    "test:database": "cross-env APP_ENV=dev NODE_ENV=test RUN_DATABASE_TESTS=true NODE_OPTIONS=--experimental-vm-modules jest --config jest.database.cjs --runInBand",
     "test:controllers": "cross-env APP_ENV=dev NODE_ENV=test NODE_OPTIONS=--experimental-vm-modules jest --selectProjects controllers --runInBand",
     "test:middlewares": "cross-env APP_ENV=dev NODE_ENV=test NODE_OPTIONS=--experimental-vm-modules jest --selectProjects middlewares --runInBand",
     "db:generate": "prisma generate",
     "db:migrate:dev": "prisma migrate dev && prisma generate",
     "db:migrate:prod": "prisma migrate deploy && prisma generate",
+    "db:migrate:test": "prisma migrate deploy",
     "db:reset:dev": "prisma migrate reset && prisma generate"
   },
   "dependencies": {

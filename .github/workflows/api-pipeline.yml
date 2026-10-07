@@ -32,10 +32,41 @@ jobs:
           cache-from: type=gha,scope=api-ci
           cache-to: type=gha,mode=max,scope=api-ci
 
+  database-integration:
+    name: PostgreSQL integration contracts
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: pass
+          POSTGRES_DB: mindway_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U user -d mindway_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      DATABASE_URL: postgresql://user:pass@localhost:5432/mindway_test?schema=public
+      DIRECT_URL: postgresql://user:pass@localhost:5432/mindway_test?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.4
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npm run db:migrate:test
+      - run: npm run test:database
+
   production:
     name: Build and deploy production
     runs-on: ubuntu-latest
-    needs: ci
+    needs: [ci, database-integration]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment: prod
     permissions:

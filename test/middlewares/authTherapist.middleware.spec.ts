@@ -23,24 +23,24 @@ describe("middlewares: authTherapistmiddleware", () => {
     expect(next).toHaveBeenCalledWith();
   });
 
-  it("forbids when role is therapist", () => {
+  it("allows when role is therapist", () => {
     const req = mockReq({ user: { id: "u1", role: "therapist" } as any });
     const res = mockRes();
     const next = mockNext();
 
     authTherapistmiddleware(req, res, next);
 
-    expect(next).toHaveBeenCalledWith(expect.objectContaining({ code: "FORBIDDEN", statusCode: 403 }));
+    expect(next).toHaveBeenCalledWith();
   });
 
-  it("allows when role is not therapist", () => {
+  it("forbids other roles", () => {
     const req = mockReq({ user: { id: "u1", role: "common" } as any });
     const res = mockRes();
     const next = mockNext();
 
     authTherapistmiddleware(req, res, next);
 
-    expect(next).toHaveBeenCalledWith();
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ code: "FORBIDDEN", statusCode: 403 }));
   });
 });
 

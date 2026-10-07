@@ -15,7 +15,7 @@ const auth = {
 };
 
 const childrenService = {
-  createChildService: jest.fn(),
+  createChildService: jest.fn<(...args: any[]) => any>(),
   listChildrenService: jest.fn(),
   listMyChildrenService: jest.fn(),
   getChildByIdService: jest.fn(),

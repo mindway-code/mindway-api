@@ -3,10 +3,10 @@ import { makeAuthServices } from "../../../src/api/v1/modules/auth/auth.service.
 import { badRequest, unauthorized } from "../../../src/core/errors/httpError.js";
 
 const repo = {
-  findAuthUserByEmail: jest.fn<Promise<any>, [string]>(),
+  findAuthUserByEmail: jest.fn<(email: string) => Promise<any>>(),
   createLocalUser: jest.fn(),
   createRefreshTokenRow: jest.fn(),
-  findActiveRefreshTokensByUserId: jest.fn<Promise<any[]>, [string]>(),
+  findActiveRefreshTokensByUserId: jest.fn<(id: string) => Promise<any[]>>(),
   revokeRefreshTokenById: jest.fn(),
 };
 
@@ -18,7 +18,7 @@ const cryptoHash = {
 const jwtAccess = { signAccessToken: jest.fn(() => "access") };
 const refreshToken = {
   signRefreshToken: jest.fn(() => "refresh"),
-  verifyRefreshToken: jest.fn<any, [string]>(),
+  verifyRefreshToken: jest.fn<(token: string) => any>(),
 };
 
 const { loginService, refreshService, logoutService } = makeAuthServices({

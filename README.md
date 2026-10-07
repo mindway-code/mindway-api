@@ -289,13 +289,13 @@ docker compose --env-file .env.dev -f compose.dev.yaml run --rm api npm run db:m
 docker compose --env-file .env.dev -f compose.dev.yaml up --build api
 ```
 
-Run tests in the dev environment without a separate test database or Compose file:
+Run the fast test suites without infrastructure:
 
 ```text
 npm test
 ```
 
-The tests use mocks and `NODE_ENV=test` for isolation while `APP_ENV` remains `dev`. Add a dedicated integration-test environment later if the project starts exercising a real database in CI.
+The default suite uses mocks and `NODE_ENV=test` for isolation while `APP_ENV` remains `dev`. Repository contracts run separately against the isolated PostgreSQL service in `compose.test.yaml`; see `test/TESTING.md` for the guarded local commands.
 
 ### Production Compose
 
@@ -321,9 +321,9 @@ GitHub Actions workflow: `.github/workflows/api-pipeline.yml`.
 
 Environment behavior:
 
-- Pull requests and pushes to `develop` or `main`: Docker installs dependencies, generates Prisma Client, runs the application TypeScript lint, runs Jest, and builds the API.
+- Pull requests and pushes to `develop` or `main`: Docker installs dependencies, generates Prisma Client, checks application and test TypeScript, runs Jest, and builds the API. A separate job applies migrations to an isolated PostgreSQL database and runs repository integration contracts.
 - Pushes to `main`: after CI succeeds, Docker builds and pushes the production image, then runs `db:migrate:prod` against Supabase.
-- CI has no database, test environment, or Compose file. Introduce those only when real database integration tests are added.
+- The PostgreSQL CI service uses the disposable `mindway_test` database and never receives production credentials.
 
 Production deployments expect GitHub environment secrets/variables:
 
@@ -765,11 +765,11 @@ Note: same routing mismatch as `PUT /families/me` (no `:id` param in the path).
 
 ---
 
-## Routes Defined But Not Mounted (not reachable by default)
+## Additional Mounted Resources
 
-The following route files exist under `src/api/v1/modules/**`, but are **not** registered in `src/api/v1/v1.routes.ts`, so they are not reachable unless you mount their routers.
+The following route files are registered in `src/api/v1/v1.routes.ts` and are reachable under `/api`.
 
-### Appointments (not mounted)
+### Appointments
 
 Defined in `src/api/v1/modules/appointments/appointment.routes.ts`:
 
@@ -780,7 +780,7 @@ Defined in `src/api/v1/modules/appointments/appointment.routes.ts`:
 - `DELETE /appointments/:id` (auth)
 - `GET /appointment` (sanity check)
 
-### Family Members (not mounted)
+### Family Members
 
 Defined in `src/api/v1/modules/familyMembers/familyMember.routes.ts`:
 
@@ -791,7 +791,7 @@ Defined in `src/api/v1/modules/familyMembers/familyMember.routes.ts`:
 - `DELETE /family-members/:id` (auth)
 - `GET /family-member` (sanity check)
 
-### Social Networks (not mounted)
+### Social Networks
 
 Defined in `src/api/v1/modules/socialNetworks/socialNetwork.routes.ts`:
 
@@ -801,7 +801,7 @@ Defined in `src/api/v1/modules/socialNetworks/socialNetwork.routes.ts`:
 - `DELETE /social-networks/:id` (auth)
 - `GET /social-network` (sanity check)
 
-### Social Network Users (not mounted)
+### Social Network Users
 
 Defined in `src/api/v1/modules/socialNetworkUsers/socialNetworkUser.routes.ts`:
 

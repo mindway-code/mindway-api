@@ -12,14 +12,8 @@ const authService = {
   logoutService: jest.fn(),
 };
 
-const cookie = {
-  setRefreshCookie: jest.fn(),
-  clearRefreshCookie: jest.fn(),
-};
-
 jest.unstable_mockModule("../../src/core/middlewares/rateLimit.middleware.js", () => rateLimit);
 jest.unstable_mockModule("../../src/api/v1/modules/auth/auth.service.js", () => authService);
-jest.unstable_mockModule("../../src/utils/tokens/cookie.js", () => cookie);
 
 const { createApp } = await import("../../src/infra/http/app.js");
 
@@ -41,5 +35,8 @@ describe("integration: POST /auth/login", () => {
         message: "Logged in",
       }),
     );
+    expect(res.headers["set-cookie"]?.[0]).toContain("refresh_token=refresh");
+    expect(res.headers["set-cookie"]?.[0]).toContain("HttpOnly");
+    expect(res.headers["set-cookie"]?.[0]).toContain("SameSite=Lax");
   });
 });

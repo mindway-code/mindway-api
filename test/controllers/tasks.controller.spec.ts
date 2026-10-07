@@ -2,11 +2,11 @@ import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 import { mockReq, mockRes } from "../helpers/express.js";
 
 const tasksService = {
-  createTaskService: jest.fn(),
-  listTasksByUserService: jest.fn(),
-  listTasksByTherapistService: jest.fn(),
-  updateTaskService: jest.fn(),
-  deleteTaskService: jest.fn(),
+  createTaskService: jest.fn<(...args: any[]) => any>(),
+  listTasksByUserService: jest.fn<(...args: any[]) => any>(),
+  listTasksByTherapistService: jest.fn<(...args: any[]) => any>(),
+  updateTaskService: jest.fn<(...args: any[]) => any>(),
+  deleteTaskService: jest.fn<(...args: any[]) => any>(),
 };
 
 jest.unstable_mockModule("../../src/api/v1/modules/tasks/tasks.service.js", () => tasksService);

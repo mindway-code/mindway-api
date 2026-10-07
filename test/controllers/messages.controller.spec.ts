@@ -2,11 +2,11 @@ import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 import { mockReq, mockRes } from "../helpers/express.js";
 
 const svc = {
-  createDirectMessageService: jest.fn(),
-  createSocialNetworkMessageService: jest.fn(),
-  deleteMessageService: jest.fn(),
-  listDirectMessagesService: jest.fn(),
-  listSocialNetworkMessagesService: jest.fn(),
+  createDirectMessageService: jest.fn<(...args: any[]) => any>(),
+  createSocialNetworkMessageService: jest.fn<(...args: any[]) => any>(),
+  deleteMessageService: jest.fn<(...args: any[]) => any>(),
+  listDirectMessagesService: jest.fn<(...args: any[]) => any>(),
+  listSocialNetworkMessagesService: jest.fn<(...args: any[]) => any>(),
 };
 
 jest.unstable_mockModule("../../src/api/v1/modules/messages/messages.service.js", () => svc);

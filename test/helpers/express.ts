@@ -19,5 +19,5 @@ export function mockRes(overrides: Partial<Response> = {}) {
 }
 
 export function mockNext() {
-  return jest.fn<NextFunction>();
+  return jest.fn() as unknown as jest.MockedFunction<NextFunction>;
 }

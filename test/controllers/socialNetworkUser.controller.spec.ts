@@ -2,11 +2,11 @@ import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 import { mockReq, mockRes } from "../helpers/express.js";
 
 const svc = {
-  listSocialNetworkUsersService: jest.fn(),
-  createSocialNetworkUserService: jest.fn(),
-  getSocialNetworkUserByIdService: jest.fn(),
-  updateSocialNetworkUserService: jest.fn(),
-  deleteSocialNetworkUserService: jest.fn(),
+  listSocialNetworkUsersService: jest.fn<(...args: any[]) => any>(),
+  createSocialNetworkUserService: jest.fn<(...args: any[]) => any>(),
+  getSocialNetworkUserByIdService: jest.fn<(...args: any[]) => any>(),
+  updateSocialNetworkUserService: jest.fn<(...args: any[]) => any>(),
+  deleteSocialNetworkUserService: jest.fn<(...args: any[]) => any>(),
 };
 
 jest.unstable_mockModule("../../src/api/v1/modules/socialNetworkUsers/socialNetworkUser.service.js", () => svc);

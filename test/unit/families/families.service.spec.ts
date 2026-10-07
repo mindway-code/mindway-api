@@ -2,12 +2,12 @@ import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 import { fileURLToPath } from "node:url";
 
 const repo = {
-  createFamily: jest.fn(),
-  listFamilies: jest.fn(),
-  listFamiliesByUserId: jest.fn(),
-  getFamilyById: jest.fn(),
-  updateFamily: jest.fn(),
-  deleteFamily: jest.fn(),
+  createFamily: jest.fn<(...args: any[]) => any>(),
+  listFamilies: jest.fn<(...args: any[]) => any>(),
+  listFamiliesByUserId: jest.fn<(...args: any[]) => any>(),
+  getFamilyById: jest.fn<(...args: any[]) => any>(),
+  updateFamily: jest.fn<(...args: any[]) => any>(),
+  deleteFamily: jest.fn<(...args: any[]) => any>(),
 };
 
 jest.unstable_mockModule(

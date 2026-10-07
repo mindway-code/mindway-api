@@ -2,11 +2,11 @@ import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 import { mockReq, mockRes } from "../helpers/express.js";
 
 const usersService = {
-  listUsersService: jest.fn<Promise<any>, [any, any]>(),
-  getMeService: jest.fn<Promise<any>, [any]>(),
-  createUserService: jest.fn<Promise<any>, [any]>(),
-  updateUserService: jest.fn<Promise<any>, [any, any]>(),
-  deleteUserService: jest.fn<Promise<any>, [any]>(),
+  listUsersService: jest.fn<(page: any, pageSize: any) => Promise<any>>(),
+  getMeService: jest.fn<(id: any) => Promise<any>>(),
+  createUserService: jest.fn<(input: any) => Promise<any>>(),
+  updateUserService: jest.fn<(id: any, input: any) => Promise<any>>(),
+  deleteUserService: jest.fn<(id: any) => Promise<any>>(),
 };
 
 jest.unstable_mockModule("../../src/api/v1/modules/users/users.service.js", () => usersService);

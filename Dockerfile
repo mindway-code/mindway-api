@@ -25,6 +25,7 @@ ENV NODE_ENV=test
 COPY . .
 RUN npm run db:generate
 RUN npm run lint
+RUN npm run lint:test
 RUN npm test
 RUN npm run build
 

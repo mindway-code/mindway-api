@@ -2,8 +2,12 @@ import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 import { fileURLToPath } from "node:url";
 
 const prisma = {
-  user: { findUnique: jest.fn(), create: jest.fn() },
-  refreshToken: { create: jest.fn(), findMany: jest.fn(), update: jest.fn() },
+  user: { findUnique: jest.fn<(...args: any[]) => any>(), create: jest.fn<(...args: any[]) => any>() },
+  refreshToken: {
+    create: jest.fn<(...args: any[]) => any>(),
+    findMany: jest.fn<(...args: any[]) => any>(),
+    update: jest.fn<(...args: any[]) => any>(),
+  },
 };
 
 jest.unstable_mockModule(

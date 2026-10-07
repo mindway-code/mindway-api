@@ -6,11 +6,11 @@ const deps = {
   pagination: jest.fn(() => ({ page: 1, pageSize: 10, skip: 0, take: 10 })),
   badRequest,
   hashPassword: jest.fn(async (v: string) => `hash(${v})`),
-  listUsers: jest.fn(),
-  getMe: jest.fn(),
-  createUser: jest.fn(),
-  updateUser: jest.fn(),
-  deleteUser: jest.fn(),
+  listUsers: jest.fn<(...args: any[]) => any>(),
+  getMe: jest.fn<(...args: any[]) => any>(),
+  createUser: jest.fn<(...args: any[]) => any>(),
+  updateUser: jest.fn<(...args: any[]) => any>(),
+  deleteUser: jest.fn<(...args: any[]) => any>(),
 };
 
 const svc = makeUsersServices(deps as any);

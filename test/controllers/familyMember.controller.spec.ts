@@ -2,11 +2,11 @@ import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 import { mockReq, mockRes } from "../helpers/express.js";
 
 const svc = {
-  listFamilyMembersService: jest.fn(),
-  createFamilyMemberService: jest.fn(),
-  getFamilyMemberByIdService: jest.fn(),
-  updateFamilyMemberService: jest.fn(),
-  deleteFamilyMemberService: jest.fn(),
+  listFamilyMembersService: jest.fn<(...args: any[]) => any>(),
+  createFamilyMemberService: jest.fn<(...args: any[]) => any>(),
+  getFamilyMemberByIdService: jest.fn<(...args: any[]) => any>(),
+  updateFamilyMemberService: jest.fn<(...args: any[]) => any>(),
+  deleteFamilyMemberService: jest.fn<(...args: any[]) => any>(),
 };
 
 jest.unstable_mockModule("../../src/api/v1/modules/familyMembers/familyMember.service.js", () => svc);

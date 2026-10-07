@@ -2,13 +2,13 @@ import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 import { mockReq, mockRes } from "../helpers/express.js";
 
 const childrenService = {
-  createChildService: jest.fn<Promise<any>, [any]>(),
-  listChildrenService: jest.fn<Promise<any>, [any]>(),
-  listMyChildrenService: jest.fn<Promise<any>, [any]>(),
-  getChildByIdService: jest.fn<Promise<any>, [any]>(),
-  updateChildService: jest.fn<Promise<any>, [any]>(),
-  deleteChildService: jest.fn<Promise<any>, [any]>(),
-  getChildByAccessCodeService: jest.fn<Promise<any>, [any]>(),
+  createChildService: jest.fn<(input: any) => Promise<any>>(),
+  listChildrenService: jest.fn<(input: any) => Promise<any>>(),
+  listMyChildrenService: jest.fn<(input: any) => Promise<any>>(),
+  getChildByIdService: jest.fn<(input: any) => Promise<any>>(),
+  updateChildService: jest.fn<(input: any) => Promise<any>>(),
+  deleteChildService: jest.fn<(input: any) => Promise<any>>(),
+  getChildByAccessCodeService: jest.fn<(input: any) => Promise<any>>(),
 };
 
 jest.unstable_mockModule("../../src/api/v1/modules/children/children.service.js", () => childrenService);

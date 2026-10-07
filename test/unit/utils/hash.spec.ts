@@ -1,8 +1,8 @@
 import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 
 const bcrypt = {
-  hash: jest.fn(),
-  compare: jest.fn(),
+  hash: jest.fn<(...args: any[]) => any>(),
+  compare: jest.fn<(...args: any[]) => any>(),
 };
 
 jest.unstable_mockModule("bcrypt", () => ({ default: bcrypt }));

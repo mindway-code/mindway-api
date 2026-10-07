@@ -2,13 +2,13 @@ import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 import { fileURLToPath } from "node:url";
 
 const repo = {
-  isSocialNetworkMember: jest.fn(),
-  createDirectMessage: jest.fn(),
-  createSocialNetworkMessage: jest.fn(),
-  deleteMessage: jest.fn(),
-  getMessageById: jest.fn(),
-  listDirectMessagesBetweenUsers: jest.fn(),
-  listSocialNetworkMessages: jest.fn(),
+  isSocialNetworkMember: jest.fn<(...args: any[]) => any>(),
+  createDirectMessage: jest.fn<(...args: any[]) => any>(),
+  createSocialNetworkMessage: jest.fn<(...args: any[]) => any>(),
+  deleteMessage: jest.fn<(...args: any[]) => any>(),
+  getMessageById: jest.fn<(...args: any[]) => any>(),
+  listDirectMessagesBetweenUsers: jest.fn<(...args: any[]) => any>(),
+  listSocialNetworkMessages: jest.fn<(...args: any[]) => any>(),
 };
 
 jest.unstable_mockModule(

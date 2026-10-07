@@ -176,12 +176,12 @@ export function makeChildrenServices(deps: ChildrenServiceDeps) {
     if (!requesterId) throw deps.badRequest("requesterId is required");
     if (!childId) throw deps.badRequest("childId is required");
 
-    // if (requesterRole !== "admin" && requesterRole !== "common") throw deps.forbidden();
+    if (requesterRole !== "admin" && requesterRole !== "common") throw deps.forbidden();
 
     const child = (await deps.getChildById(childId, { includeAccessCode: true })) as ChildWithAccessCodeRecord | null;
     if (!child) throw deps.notFound("Child not found");
 
-    // if (!canManageChild(requesterRole, requesterId, child)) throw deps.forbidden();
+    if (!canManageChild(requesterRole, requesterId, child)) throw deps.forbidden();
 
     return child;
   }

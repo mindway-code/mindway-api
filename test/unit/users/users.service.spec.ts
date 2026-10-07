@@ -4,11 +4,11 @@ import { pagination } from "../../../src/utils/pagination.js";
 import { badRequest } from "../../../src/core/errors/httpError.js";
 
 const usersRepo = {
-  listUsers: jest.fn<Promise<any>, [any]>(),
-  getMe: jest.fn<Promise<any>, [string]>(),
-  createUser: jest.fn<Promise<any>, [any]>(),
-  updateUser: jest.fn<Promise<any>, [string, any]>(),
-  deleteUser: jest.fn<Promise<any>, [string]>(),
+  listUsers: jest.fn<(input: any) => Promise<any>>(),
+  getMe: jest.fn<(id: string) => Promise<any>>(),
+  createUser: jest.fn<(input: any) => Promise<any>>(),
+  updateUser: jest.fn<(id: string, input: any) => Promise<any>>(),
+  deleteUser: jest.fn<(id: string) => Promise<any>>(),
 };
 
 const cryptoHash = {

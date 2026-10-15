@@ -8,6 +8,9 @@ export type ChildRecord = {
   observation: string | null;
   createdAt: Date;
   updatedAt: Date;
+  anamnesis?: {
+    health?: { diagnosis: string | null } | null;
+  } | null;
 };
 
 export type ChildWithAccessCodeRecord = ChildRecord & {

@@ -3,12 +3,15 @@ import authRateLimiter from "../../../../core/middlewares/rateLimit.middleware.j
 
 import authMiddleware from "../../../../core/middlewares/auth.middleware.js";
 import authAdminMiddleware from "../../../../core/middlewares/authAdmin.middleware.js";
+import { validate } from "../../../../core/middlewares/validate.middleware.js";
+import { changePasswordSchema } from "../../validators/users.validator.js";
 
 import {
   listUsersController,
   getMeController,
   createUserController,
   updateUserController,
+  changePasswordController,
   deleteUserController,
 } from "./users.controller.js";
 
@@ -42,6 +45,13 @@ userRoutes.patch(
   authRateLimiter,
   authMiddleware,
   updateUserController
+);
+userRoutes.patch(
+  "/users/me/password",
+  authRateLimiter,
+  authMiddleware,
+  validate(changePasswordSchema),
+  changePasswordController
 );
 userRoutes.delete(
   "/users/me",

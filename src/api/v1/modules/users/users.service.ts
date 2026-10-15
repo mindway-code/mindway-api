@@ -1,10 +1,11 @@
 import { pagination } from "../../../../utils/pagination.js";
-import { badRequest } from "../../../../core/errors/httpError.js";
-import { hashPassword } from "../../../../utils/crypto/hash.js";
+import { badRequest, unauthorized } from "../../../../core/errors/httpError.js";
+import { hashPassword, verifyPassword } from "../../../../utils/crypto/hash.js";
 
 import {
   listUsers,
   getMe,
+  getAuthById,
   createUser,
   updateUser,
   deleteUser,
@@ -18,9 +19,12 @@ export type UsersServiceDeps = {
   hashPassword: typeof hashPassword;
   listUsers: typeof listUsers;
   getMe: typeof getMe;
+  getAuthById?: typeof getAuthById;
   createUser: typeof createUser;
   updateUser: typeof updateUser;
   deleteUser: typeof deleteUser;
+  verifyPassword?: typeof verifyPassword;
+  unauthorized?: typeof unauthorized;
 };
 
 export function makeUsersServices(deps: UsersServiceDeps) {
@@ -62,6 +66,9 @@ export function makeUsersServices(deps: UsersServiceDeps) {
   async function updateUserService(userId: string, dto: UpdateUserDTO) {
     const existing = await deps.getMe(userId);
     if (!existing) throw deps.badRequest("User not found", 404);
+    if ("password" in dto || "passwordHash" in dto) {
+      throw deps.badRequest("Use the password change endpoint to update credentials");
+    }
 
     const input: UpdateUserDTO = {
       ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
@@ -69,12 +76,22 @@ export function makeUsersServices(deps: UsersServiceDeps) {
       ...(dto.role !== undefined ? { role: dto.role } : {}),
     };
 
-    if (dto.password !== undefined && dto.password !== null) {
-      input.passwordHash = await deps.hashPassword(dto.password);
-    }
-
     const updated = await deps.updateUser(userId, input);
     return updated;
+  }
+
+  async function changePasswordService(userId: string, currentPassword: string, newPassword: string) {
+    if (!userId) throw deps.badRequest("User id is required");
+    if (!currentPassword || !newPassword) throw deps.badRequest("Current and new passwords are required");
+    const authUser = await (deps.getAuthById ?? getAuthById)(userId);
+    if (!authUser) throw deps.badRequest("User not found");
+    if (!authUser.passwordHash || !(await (deps.verifyPassword ?? verifyPassword)(currentPassword, authUser.passwordHash))) {
+      throw (deps.unauthorized ?? unauthorized)("Current password is incorrect");
+    }
+    if (await (deps.verifyPassword ?? verifyPassword)(newPassword, authUser.passwordHash)) {
+      throw deps.badRequest("New password must be different from the current password");
+    }
+    return deps.updateUser(userId, { passwordHash: await deps.hashPassword(newPassword) });
   }
 
   async function deleteUserService(userId: string) {
@@ -84,7 +101,7 @@ export function makeUsersServices(deps: UsersServiceDeps) {
     return deps.deleteUser(userId);
   }
 
-  return { listUsersService, getMeService, createUserService, updateUserService, deleteUserService };
+  return { listUsersService, getMeService, createUserService, updateUserService, changePasswordService, deleteUserService };
 }
 
 const defaultDeps: UsersServiceDeps = {
@@ -93,12 +110,15 @@ const defaultDeps: UsersServiceDeps = {
   hashPassword,
   listUsers,
   getMe,
+  getAuthById,
   createUser,
   updateUser,
   deleteUser,
+  verifyPassword,
+  unauthorized,
 };
 
-export const { listUsersService, getMeService, createUserService, updateUserService, deleteUserService } =
+export const { listUsersService, getMeService, createUserService, updateUserService, changePasswordService, deleteUserService } =
   makeUsersServices(defaultDeps);
 
-export default { listUsersService, getMeService, createUserService, updateUserService, deleteUserService };
+export default { listUsersService, getMeService, createUserService, updateUserService, changePasswordService, deleteUserService };

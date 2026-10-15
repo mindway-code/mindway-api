@@ -47,6 +47,10 @@ export async function getMe(userId: string): Promise<UserRecord | null> {
   }) as Promise<UserRecord | null>;
 }
 
+export async function getAuthById(userId: string): Promise<UserAuthRecord | null> {
+  return prisma.user.findUnique({ where: { id: userId }, select: userAuthSelect }) as Promise<UserAuthRecord | null>;
+}
+
 
 export async function createUser(input: UserDTO): Promise<UserRecord> {
   const created = await prisma.user.create({
@@ -113,6 +117,7 @@ export default {
   findUserByEmail,
   findUserById,
   getMe,
+  getAuthById,
   createUser,
   updateUser,
   deleteUser,

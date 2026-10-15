@@ -24,6 +24,13 @@ const childSelect = {
 const childWithAccessCodeSelect = {
   ...childSelect,
   accessCode: true,
+  anamnesis: {
+    select: {
+      health: {
+        select: { diagnosis: true },
+      },
+    },
+  },
 } as const;
 
 export async function createChild(input: CreateChildInput): Promise<ChildWithAccessCodeRecord> {

@@ -4,6 +4,7 @@ import {
   getMeService,
   createUserService,
   updateUserService,
+  changePasswordService,
   deleteUserService,
 } from "./users.service.js";
 import { sendSuccess, sendError } from "../../../../utils/response.js";
@@ -56,6 +57,17 @@ export async function updateUserController(req: Request, res: Response) {
   }
 }
 
+export async function changePasswordController(req: Request, res: Response) {
+  try {
+    const userId = req.user!.id;
+    const { currentPassword, newPassword } = req.body as { currentPassword: string; newPassword: string };
+    await changePasswordService(userId, currentPassword, newPassword);
+    return sendSuccess(res, {}, "Password changed");
+  } catch (err) {
+    return sendError(res, err);
+  }
+}
+
 
 export async function deleteUserController(req: Request, res: Response) {
   try {
@@ -73,5 +85,6 @@ export default {
   getMeController,
   createUserController,
   updateUserController,
+  changePasswordController,
   deleteUserController,
 };

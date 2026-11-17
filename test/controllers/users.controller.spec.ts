@@ -6,6 +6,7 @@ const usersService = {
   getMeService: jest.fn<(id: any) => Promise<any>>(),
   createUserService: jest.fn<(input: any) => Promise<any>>(),
   updateUserService: jest.fn<(id: any, input: any) => Promise<any>>(),
+  changeMyPasswordService: jest.fn<(id: any, input: any) => Promise<void>>(),
   deleteUserService: jest.fn<(id: any) => Promise<any>>(),
 };
 
@@ -19,6 +20,7 @@ describe("controllers: users", () => {
     usersService.getMeService.mockReset();
     usersService.createUserService.mockReset();
     usersService.updateUserService.mockReset();
+    usersService.changeMyPasswordService.mockReset();
     usersService.deleteUserService.mockReset();
   });
 
@@ -47,6 +49,18 @@ describe("controllers: users", () => {
 
     await ctrl.createUserController(req, res);
     expect((res as any)._getJSONData()).toEqual(expect.objectContaining({ message: "User created" }));
+  });
+
+  it("changeMyPasswordController uses the authenticated user", async () => {
+    usersService.changeMyPasswordService.mockResolvedValue();
+    const body = { currentPassword: "old-password", newPassword: "new-password" };
+    const req = mockReq({ user: { id: "u1", role: "common" } as any, body });
+    const res = mockRes();
+
+    await ctrl.changeMyPasswordController(req, res);
+
+    expect(usersService.changeMyPasswordService).toHaveBeenCalledWith("u1", body);
+    expect((res as any)._getJSONData()).toEqual(expect.objectContaining({ success: true }));
   });
 });
 

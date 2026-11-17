@@ -4,6 +4,7 @@ import {
   getMeService,
   createUserService,
   updateUserService,
+  changeMyPasswordService,
   deleteUserService,
 } from "./users.service.js";
 import { sendSuccess, sendError } from "../../../../utils/response.js";
@@ -56,6 +57,17 @@ export async function updateUserController(req: Request, res: Response) {
   }
 }
 
+export async function changeMyPasswordController(req: Request, res: Response) {
+  try {
+    const userId = req.user!.id;
+    const dto = req.body as import("./users.types.js").ChangeMyPasswordDTO;
+    await changeMyPasswordService(userId, dto);
+    return sendSuccess(res, {}, "Password changed. Sign in again on other devices.");
+  } catch (err) {
+    return sendError(res, err);
+  }
+}
+
 
 export async function deleteUserController(req: Request, res: Response) {
   try {
@@ -73,5 +85,6 @@ export default {
   getMeController,
   createUserController,
   updateUserController,
+  changeMyPasswordController,
   deleteUserController,
 };

@@ -37,5 +37,13 @@ setDefaultEnv("GMAIL_APP_PASSWORD", "test-app-password");
 setDefaultEnv("AUTH_RATE_LIMIT_WINDOW_MS", String(15 * 60 * 1000));
 setDefaultEnv("AUTH_RATE_LIMIT_MAX", "1000");
 
+setDefaultEnv("MFA_ISSUER", "MINDWAY TEST");
+setDefaultEnv("MFA_TOTP_ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
+setDefaultEnv("MFA_TOTP_ENCRYPTION_KEY_VERSION", "1");
+setDefaultEnv("MFA_RECOVERY_CODE_PEPPER", "test_mfa_recovery_code_pepper_1234567890");
+setDefaultEnv("MFA_ENROLLMENT_TTL_SECONDS", "600");
+setDefaultEnv("MFA_ATTEMPT_WINDOW_SECONDS", "300");
+setDefaultEnv("MFA_ATTEMPT_MAX", "5");
+
 // Keep logs quiet in tests
 setDefaultEnv("LOG_LEVEL", "silent");

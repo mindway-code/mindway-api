@@ -1,6 +1,14 @@
 import { pagination } from "../../../../utils/pagination.js";
-import { badRequest } from "../../../../core/errors/httpError.js";
-import { hashPassword } from "../../../../utils/crypto/hash.js";
+import {
+  badRequest,
+  passwordReauthenticationUnsupported,
+  unauthorized,
+} from "../../../../core/errors/httpError.js";
+import { hashPassword, verifyPassword } from "../../../../utils/crypto/hash.js";
+import {
+  changePasswordAndRevokeRefreshTokens,
+  findAuthUserByIdForPassword,
+} from "../../../../infra/database/repositories/auth.repository.js";
 
 import {
   listUsers,
@@ -10,17 +18,22 @@ import {
   deleteUser,
 } from "../../../../infra/database/repositories/users.repository.js";
 
-import type { UserDTO, UpdateUserDTO, ListUsersResponse } from "./users.types.js";
+import type { ChangeMyPasswordDTO, UserDTO, UpdateUserDTO, ListUsersResponse } from "./users.types.js";
 
 export type UsersServiceDeps = {
   pagination: typeof pagination;
   badRequest: typeof badRequest;
+  unauthorized: typeof unauthorized;
+  passwordReauthenticationUnsupported: typeof passwordReauthenticationUnsupported;
   hashPassword: typeof hashPassword;
+  verifyPassword: typeof verifyPassword;
   listUsers: typeof listUsers;
   getMe: typeof getMe;
   createUser: typeof createUser;
   updateUser: typeof updateUser;
   deleteUser: typeof deleteUser;
+  findAuthUserByIdForPassword: typeof findAuthUserByIdForPassword;
+  changePasswordAndRevokeRefreshTokens: typeof changePasswordAndRevokeRefreshTokens;
 };
 
 export function makeUsersServices(deps: UsersServiceDeps) {
@@ -66,15 +79,25 @@ export function makeUsersServices(deps: UsersServiceDeps) {
     const input: UpdateUserDTO = {
       ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
       ...(dto.email !== undefined ? { email: dto.email } : {}),
-      ...(dto.role !== undefined ? { role: dto.role } : {}),
     };
-
-    if (dto.password !== undefined && dto.password !== null) {
-      input.passwordHash = await deps.hashPassword(dto.password);
-    }
 
     const updated = await deps.updateUser(userId, input);
     return updated;
+  }
+
+  async function changeMyPasswordService(userId: string, dto: ChangeMyPasswordDTO): Promise<void> {
+    const user = await deps.findAuthUserByIdForPassword(userId);
+    if (!user) throw deps.unauthorized("Authentication failed");
+
+    if (user.provider === "google" || !user.passwordHash) {
+      throw deps.passwordReauthenticationUnsupported();
+    }
+
+    const matches = await deps.verifyPassword(dto.currentPassword, user.passwordHash);
+    if (!matches) throw deps.unauthorized("Authentication failed");
+
+    const passwordHash = await deps.hashPassword(dto.newPassword);
+    await deps.changePasswordAndRevokeRefreshTokens(userId, passwordHash);
   }
 
   async function deleteUserService(userId: string) {
@@ -84,21 +107,33 @@ export function makeUsersServices(deps: UsersServiceDeps) {
     return deps.deleteUser(userId);
   }
 
-  return { listUsersService, getMeService, createUserService, updateUserService, deleteUserService };
+  return {
+    listUsersService,
+    getMeService,
+    createUserService,
+    updateUserService,
+    changeMyPasswordService,
+    deleteUserService,
+  };
 }
 
 const defaultDeps: UsersServiceDeps = {
   pagination,
   badRequest,
+  unauthorized,
+  passwordReauthenticationUnsupported,
   hashPassword,
+  verifyPassword,
   listUsers,
   getMe,
   createUser,
   updateUser,
   deleteUser,
+  findAuthUserByIdForPassword,
+  changePasswordAndRevokeRefreshTokens,
 };
 
-export const { listUsersService, getMeService, createUserService, updateUserService, deleteUserService } =
+export const { listUsersService, getMeService, createUserService, updateUserService, changeMyPasswordService, deleteUserService } =
   makeUsersServices(defaultDeps);
 
-export default { listUsersService, getMeService, createUserService, updateUserService, deleteUserService };
+export default { listUsersService, getMeService, createUserService, updateUserService, changeMyPasswordService, deleteUserService };

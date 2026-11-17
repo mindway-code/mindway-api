@@ -55,15 +55,46 @@ describe("auth: registerService", () => {
 
   it("rejects when password confirmation mismatches", async () => {
     await expect(
-      registerService({ name: "A", email: "a@a.com", password: "x", confirmPassword: "y" } as any),
+      registerService({ name: "A", email: "a@a.com", password: "xxxxxx", confirmPassword: "yyyyyy", role: "common" }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it.each(["common", "enterprise", "professional", "therapist"] as const)(
+    "creates a %s public account",
+    async (role) => {
+      authRepo.findAuthUserByEmail.mockResolvedValue(null);
+      authRepo.createLocalUser.mockResolvedValue({ id: "u1", role });
+
+      await registerService({
+        name: "Alice",
+        email: "alice@example.com",
+        password: "secret1",
+        confirmPassword: "secret1",
+        role,
+      });
+
+      expect(authRepo.createLocalUser).toHaveBeenCalledWith(expect.objectContaining({ role }));
+    },
+  );
+
+  it.each([undefined, "admin", "ADMIN", "unknown"])("rejects public role %s", async (role) => {
+    await expect(
+      registerService({
+        name: "Alice",
+        email: "alice@example.com",
+        password: "secret1",
+        confirmPassword: "secret1",
+        role,
+      } as any),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(authRepo.createLocalUser).not.toHaveBeenCalled();
   });
 
   it("rejects when email already exists", async () => {
     authRepo.findAuthUserByEmail.mockResolvedValue({ id: "u1" });
 
     await expect(
-      registerService({ name: "A", email: "a@a.com", password: "x", confirmPassword: "x" } as any),
+      registerService({ name: "A", email: "a@a.com", password: "secret1", confirmPassword: "secret1", role: "common" }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
@@ -75,16 +106,17 @@ describe("auth: registerService", () => {
     const result = await registerService({
       name: "  Alice  ",
       email: "ALICE@EXAMPLE.COM",
-      password: "pass",
-      confirmPassword: "pass",
-    } as any);
+      password: "secret1",
+      confirmPassword: "secret1",
+      role: "common",
+    });
 
     expect(result).toEqual({ accessToken: "access-token", refreshToken: "refresh-token" });
     expect(authRepo.createLocalUser).toHaveBeenCalledWith(
       expect.objectContaining({
         name: "Alice",
         email: "alice@example.com",
-        passwordHash: "hash(pass)",
+        passwordHash: "hash(secret1)",
         role: "common",
         provider: "local",
       }),

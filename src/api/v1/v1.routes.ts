@@ -14,10 +14,12 @@ import childrenRoutes from "./modules/children/children.routes.js";
 import anamnesisRoutes from "./modules/anamnesis/anamnesis.routes.js";
 import associationChildrenRoutes from "./modules/associationChildren/associationChildren.routes.js";
 import reportsChildrenRoutes from "./modules/reportsChildren/reportsChildren.routes.js";
+import mfaRoutes from "./modules/mfa/mfa.routes.js";
 
 export const v1Routes = Router();
 
 v1Routes.use(authRoutes);
+v1Routes.use(mfaRoutes);
 v1Routes.use(appointmentRoutes);
 v1Routes.use(userRoutes);
 v1Routes.use(familyRoutes);

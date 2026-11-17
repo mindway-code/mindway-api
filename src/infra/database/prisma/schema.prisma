@@ -32,7 +32,10 @@ model User {
   secondaryResponsibleChildren Child[] @relation("ChildSecondaryResponsible")
 
   associatedUsers AssociationChild[]
-  reports         ReportsChild[]
+  reports         ReportsChild[]    @relation("ReportAuthor")
+  archivedReports ReportsChild[]    @relation("ReportArchiver")
+  reportRevisions ReportRevision[]  @relation("ReportRevisionAuthor")
+  totpFactor      UserTotpFactor?
 
   @@index([provider])
   @@index([createdAt])
@@ -53,6 +56,39 @@ model RefreshToken {
   @@index([expiresAt])
   @@index([revokedAt])
   @@map("refresh_tokens")
+}
+
+model UserTotpFactor {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @unique @map("user_id") @db.Uuid
+  secretCiphertext String   @map("secret_ciphertext")
+  secretIv         String   @map("secret_iv")
+  secretAuthTag    String   @map("secret_auth_tag")
+  keyVersion       Int      @map("key_version")
+  lastUsedTimeStep BigInt?  @map("last_used_time_step")
+  enabledAt        DateTime @default(now()) @map("enabled_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recoveryCodes MfaRecoveryCode[]
+
+  @@index([enabledAt])
+  @@map("user_totp_factors")
+}
+
+model MfaRecoveryCode {
+  id        String    @id @default(uuid()) @db.Uuid
+  factorId  String    @map("factor_id") @db.Uuid
+  digest    String    @unique
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  factor UserTotpFactor @relation(fields: [factorId], references: [id], onDelete: Cascade)
+
+  @@index([factorId, usedAt])
+  @@map("mfa_recovery_codes")
 }
 
 model Appointment {
@@ -233,17 +269,51 @@ model ReportsChild {
   difficulty     String?
   recommendation String?
 
+  currentRevisionNumber   Int       @map("current_revision_number")
+  publishedRevisionNumber Int?      @map("published_revision_number")
+  archivedAt              DateTime? @map("archived_at")
+  archivedById            String?   @map("archived_by_id") @db.Uuid
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @map("updated_at")
 
-  child Child @relation(fields: [childId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  child      Child            @relation(fields: [childId], references: [id], onDelete: Cascade)
+  user       User             @relation("ReportAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  archivedBy User?            @relation("ReportArchiver", fields: [archivedById], references: [id], onDelete: SetNull)
+  revisions  ReportRevision[]
 
   @@index([childId])
   @@index([userId])
   @@index([userRole])
   @@index([createdAt])
+  @@index([archivedAt])
   @@map("reports_children")
+}
+
+model ReportRevision {
+  id               String               @id @default(uuid()) @db.Uuid
+  reportId         String               @map("report_id") @db.Uuid
+  revisionNumber   Int                  @map("revision_number")
+  createdById      String               @map("created_by_id") @db.Uuid
+  status           ReportRevisionStatus
+  title            String
+  behavior         String?
+  difficulty       String?
+  recommendation   String?
+  contentHash      String               @map("content_hash")
+  submittedAt      DateTime?            @map("submitted_at")
+  rejectedAt       DateTime?            @map("rejected_at")
+  rejectionReason  String?              @map("rejection_reason")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  report   ReportsChild @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  createdBy User         @relation("ReportRevisionAuthor", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([reportId, revisionNumber])
+  @@index([reportId, status])
+  @@index([createdById])
+  @@map("report_revisions")
 }
 
 model Anamnesis {
@@ -418,4 +488,13 @@ enum TaskStatus {
   in_progress
   done
   canceled
+}
+
+enum ReportRevisionStatus {
+  LEGACY_UNVALIDATED
+  DRAFT
+  SUBMITTED
+  VALIDATED
+  REJECTED
+  SUPERSEDED
 }

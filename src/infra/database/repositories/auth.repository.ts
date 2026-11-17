@@ -16,6 +16,38 @@ export async function findAuthUserByEmail(email: string): Promise<AuthUserRecord
   }) as Promise<AuthUserRecord | null>;
 }
 
+export async function findAuthUserByIdForPassword(userId: string): Promise<AuthUserRecord | null> {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      passwordHash: true,
+      provider: true,
+      googleId: true,
+    },
+  }) as Promise<AuthUserRecord | null>;
+}
+
+export async function changePasswordAndRevokeRefreshTokens(
+  userId: string,
+  passwordHash: string,
+): Promise<void> {
+  await prisma.$transaction(async (transaction) => {
+    await transaction.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+      select: { id: true },
+    });
+    await transaction.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  });
+}
+
 export async function createLocalUser(input: CreateUserInput) {
   return prisma.user.create({
     data: {
@@ -70,6 +102,8 @@ export async function revokeRefreshTokenById(id: string) {
 
 export default {
   findAuthUserByEmail,
+  findAuthUserByIdForPassword,
+  changePasswordAndRevokeRefreshTokens,
   createLocalUser,
   createRefreshTokenRow,
   findActiveRefreshTokensByUserId,

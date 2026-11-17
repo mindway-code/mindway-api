@@ -6,11 +6,18 @@ export const jsonContent = {
 
 export const bearerSecurity = [{ bearerAuth: [] }] as const;
 
-export const successResponse = (description = "Success") => ({
+export const successResponse = (description = "Success", dataSchema?: Record<string, unknown>) => ({
   description,
   content: {
     "application/json": {
-      schema: { $ref: "#/components/schemas/SuccessEnvelope" },
+      schema: dataSchema
+        ? {
+            allOf: [
+              { $ref: "#/components/schemas/SuccessEnvelope" },
+              { type: "object", properties: { data: dataSchema } },
+            ],
+          }
+        : { $ref: "#/components/schemas/SuccessEnvelope" },
     },
   },
 });
@@ -20,8 +27,11 @@ export const errorResponses = {
   "401": { $ref: "#/components/responses/Unauthorized" },
   "403": { $ref: "#/components/responses/Forbidden" },
   "404": { $ref: "#/components/responses/NotFound" },
+  "409": { $ref: "#/components/responses/Conflict" },
+  "410": { $ref: "#/components/responses/Gone" },
   "429": { $ref: "#/components/responses/TooManyRequests" },
   "500": { $ref: "#/components/responses/InternalError" },
+  "503": { $ref: "#/components/responses/ServiceUnavailable" },
 } as const;
 
 export const paginationParameters = [

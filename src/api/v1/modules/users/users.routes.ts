@@ -9,8 +9,15 @@ import {
   getMeController,
   createUserController,
   updateUserController,
+  changeMyPasswordController,
   deleteUserController,
 } from "./users.controller.js";
+import { validate } from "../../../../core/middlewares/validate.middleware.js";
+import {
+  changeMyPasswordSchema,
+  createUserSchema,
+  updateMeSchema,
+} from "../../validators/users.validator.js";
 
 export const userRoutes = Router();
 
@@ -27,6 +34,7 @@ userRoutes.post(
   authRateLimiter,
   authMiddleware,
   authAdminMiddleware,
+  validate(createUserSchema),
   createUserController
 );
 
@@ -41,7 +49,15 @@ userRoutes.patch(
   "/users/me",
   authRateLimiter,
   authMiddleware,
+  validate(updateMeSchema),
   updateUserController
+);
+userRoutes.patch(
+  "/users/me/password",
+  authRateLimiter,
+  authMiddleware,
+  validate(changeMyPasswordSchema),
+  changeMyPasswordController,
 );
 userRoutes.delete(
   "/users/me",

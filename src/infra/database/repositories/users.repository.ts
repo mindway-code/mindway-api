@@ -71,9 +71,6 @@ export async function updateUser(userId: string, input: UpdateUserDTO): Promise<
     data: {
       ...(input.name !== undefined ? { name: input.name } : {}),
       ...(input.email !== undefined ? { email: input.email } : {}),
-      ...(input.role !== undefined ? { role: input.role } : {}),
-      ...(input.passwordHash !== undefined ? { passwordHash: input.passwordHash } : {}),
-      ...(input.googleId !== undefined ? { googleId: input.googleId } : {}),
     },
     select: userSafeSelect,
   });

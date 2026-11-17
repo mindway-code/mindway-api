@@ -19,14 +19,18 @@ export const createReportsChildSchema = z.object({
   difficulty: z.string().nullable().optional(),
   recommendation: z.string().nullable().optional(),
   accessCode: z.string().min(6).max(10).optional(),
-});
+}).strict();
 
 export const updateReportsChildSchema = z.object({
   title: z.string().min(1).optional(),
   behavior: z.string().nullable().optional(),
   difficulty: z.string().nullable().optional(),
   recommendation: z.string().nullable().optional(),
-});
+}).strict().refine((value) => Object.keys(value).length > 0, "At least one field is required");
+
+export const rejectReportSchema = z.object({
+  reason: z.string().trim().min(1).max(2000),
+}).strict();
 
 export default {
   childIdParamsSchema,
@@ -34,5 +38,6 @@ export default {
   listReportsChildrenQuerySchema,
   createReportsChildSchema,
   updateReportsChildSchema,
+  rejectReportSchema,
 };
 

@@ -2,12 +2,14 @@ import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 import { fileURLToPath } from "node:url";
 
 const prisma = {
-  user: { findUnique: jest.fn<(...args: any[]) => any>(), create: jest.fn<(...args: any[]) => any>() },
+  user: { findUnique: jest.fn<(...args: any[]) => any>(), create: jest.fn<(...args: any[]) => any>(), update: jest.fn<(...args: any[]) => any>() },
   refreshToken: {
     create: jest.fn<(...args: any[]) => any>(),
     findMany: jest.fn<(...args: any[]) => any>(),
     update: jest.fn<(...args: any[]) => any>(),
+    updateMany: jest.fn<(...args: any[]) => any>(),
   },
+  $transaction: jest.fn<(...args: any[]) => any>(),
 };
 
 jest.unstable_mockModule(
@@ -24,6 +26,9 @@ describe("repositories: auth", () => {
     prisma.refreshToken.create.mockReset();
     prisma.refreshToken.findMany.mockReset();
     prisma.refreshToken.update.mockReset();
+    prisma.refreshToken.updateMany.mockReset();
+    prisma.user.update.mockReset();
+    prisma.$transaction.mockReset();
   });
 
   it("findAuthUserByEmail queries prisma.user.findUnique", async () => {
@@ -46,5 +51,24 @@ describe("repositories: auth", () => {
         where: expect.objectContaining({ userId: "u1", revokedAt: null, expiresAt: expect.any(Object) }),
       }),
     );
+  });
+
+  it("changes the password and revokes active refresh tokens in one transaction", async () => {
+    prisma.$transaction.mockImplementation(async (operation: (transaction: typeof prisma) => Promise<void>) => operation(prisma));
+    prisma.user.update.mockResolvedValue({ id: "u1" });
+    prisma.refreshToken.updateMany.mockResolvedValue({ count: 2 });
+
+    await repo.changePasswordAndRevokeRefreshTokens("u1", "new-hash");
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { passwordHash: "new-hash" },
+      select: { id: true },
+    });
+    expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+      where: { userId: "u1", revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    });
   });
 });

@@ -1,6 +1,6 @@
 import jwt, { type JwtPayload, type SignOptions } from "jsonwebtoken";
 import { env } from "../../core/config/env.js";
-import { unauthorized } from "../../core/errors/httpError.js";
+import { accessTokenExpired, accessTokenInvalid } from "../../core/errors/httpError.js";
 
 
 export type UserRole = "admin" | "therapist" | "common" | "enterprise" | "professional";
@@ -9,6 +9,12 @@ export type AccessTokenPayload = {
   sub: string;
   role: UserRole;
 };
+
+const USER_ROLES: UserRole[] = ["admin", "therapist", "common", "enterprise", "professional"];
+
+function isUserRole(value: unknown): value is UserRole {
+  return typeof value === "string" && USER_ROLES.includes(value as UserRole);
+}
 
 type VerifiedAccessToken = AccessTokenPayload & {
   iat: number;
@@ -30,10 +36,10 @@ export function verifyAccessToken(token: string): VerifiedAccessToken {
     const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET as jwt.Secret) as JwtPayload;
 
     const sub = decoded.sub;
-    const role = (decoded as any).role as UserRole | undefined;
+    const role = (decoded as { role?: unknown }).role;
 
-    if (typeof sub !== "string" || !role) {
-      throw unauthorized("Invalid token payload");
+    if (typeof sub !== "string" || !isUserRole(role)) {
+      throw accessTokenInvalid();
     }
 
     return {
@@ -42,8 +48,11 @@ export function verifyAccessToken(token: string): VerifiedAccessToken {
       iat: decoded.iat ?? 0,
       exp: decoded.exp ?? 0,
     };
-  } catch {
-    throw unauthorized("Invalid or expired token");
+  } catch (err) {
+    if ((err as { name?: string } | null)?.name === "TokenExpiredError") {
+      throw accessTokenExpired();
+    }
+    throw accessTokenInvalid();
   }
 }
 

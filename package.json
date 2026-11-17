@@ -26,6 +26,8 @@
     "db:migrate:dev": "prisma migrate dev && prisma generate",
     "db:migrate:prod": "prisma migrate deploy && prisma generate",
     "db:migrate:test": "prisma migrate deploy",
+    "db:backfill:report-revisions": "tsx scripts/backfill-report-revisions.ts",
+    "db:verify:report-revisions": "tsx scripts/backfill-report-revisions.ts --verify",
     "db:reset:dev": "prisma migrate reset && prisma generate"
   },
   "dependencies": {
@@ -39,6 +41,7 @@
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.3",
     "nodemailer": "^8.0.1",
+    "otplib": "13.6.0",
     "pino": "^9.3.2",
     "pino-http": "^10.2.0",
     "prisma": "^6.0.0",

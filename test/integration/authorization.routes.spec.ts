@@ -48,7 +48,7 @@ describe("integration: authentication and role boundaries", () => {
   it("rejects an anonymous request before the controller", async () => {
     const response = await request(createApp()).get("/api/social-networks").expect(401);
 
-    expect(response.body.error).toEqual(expect.objectContaining({ code: "UNAUTHORIZED" }));
+    expect(response.body.error).toEqual(expect.objectContaining({ code: "ACCESS_TOKEN_MISSING" }));
     expect(socialNetworksService.listSocialNetworksService).not.toHaveBeenCalled();
   });
 

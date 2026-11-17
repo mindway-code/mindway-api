@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, jest } from "@jest/globals";
 import { makeUsersServices } from "../../../src/api/v1/modules/users/users.service.js";
 import { pagination } from "../../../src/utils/pagination.js";
-import { badRequest } from "../../../src/core/errors/httpError.js";
+import { badRequest, passwordReauthenticationUnsupported, unauthorized } from "../../../src/core/errors/httpError.js";
 
 const usersRepo = {
   listUsers: jest.fn<(input: any) => Promise<any>>(),
@@ -9,6 +9,8 @@ const usersRepo = {
   createUser: jest.fn<(input: any) => Promise<any>>(),
   updateUser: jest.fn<(id: string, input: any) => Promise<any>>(),
   deleteUser: jest.fn<(id: string) => Promise<any>>(),
+  findAuthUserByIdForPassword: jest.fn<(id: string) => Promise<any>>(),
+  changePasswordAndRevokeRefreshTokens: jest.fn<(id: string, hash: string) => Promise<void>>(),
 };
 
 const cryptoHash = {
@@ -18,12 +20,17 @@ const cryptoHash = {
 const { listUsersService, createUserService } = makeUsersServices({
   pagination,
   badRequest,
+  unauthorized,
+  passwordReauthenticationUnsupported,
   hashPassword: cryptoHash.hashPassword as any,
+  verifyPassword: jest.fn(async () => true) as any,
   listUsers: usersRepo.listUsers as any,
   getMe: usersRepo.getMe as any,
   createUser: usersRepo.createUser as any,
   updateUser: usersRepo.updateUser as any,
   deleteUser: usersRepo.deleteUser as any,
+  findAuthUserByIdForPassword: usersRepo.findAuthUserByIdForPassword as any,
+  changePasswordAndRevokeRefreshTokens: usersRepo.changePasswordAndRevokeRefreshTokens as any,
 });
 
 describe("users: services", () => {

@@ -13,6 +13,15 @@ const userBody = {
   },
 };
 
+const updateMeBody = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    name: { type: "string" },
+    email: { type: "string", format: "email", nullable: true },
+  },
+};
+
 export const usersPaths: OpenApiPaths = {
   "/users": {
     get: {
@@ -50,7 +59,7 @@ export const usersPaths: OpenApiPaths = {
       tags: ["Users"],
       summary: "Update the authenticated user profile",
       security: bearerSecurity,
-      requestBody: jsonBody(userBody, false),
+      requestBody: jsonBody(updateMeBody, false),
       responses: {
         "200": successResponse("User updated"),
         ...errorResponses,
@@ -62,6 +71,19 @@ export const usersPaths: OpenApiPaths = {
       security: bearerSecurity,
       responses: {
         "200": successResponse("User deleted"),
+        ...errorResponses,
+      },
+    },
+  },
+  "/users/me/password": {
+    patch: {
+      tags: ["Users"],
+      summary: "Change the authenticated local account password",
+      description: "Verifies the current password and revokes all active refresh tokens atomically. Google-only accounts require provider reauthentication, which is not implemented yet.",
+      security: bearerSecurity,
+      requestBody: jsonBody({ $ref: "#/components/schemas/ChangeMyPasswordRequest" }),
+      responses: {
+        "200": successResponse("Password changed and refresh sessions revoked"),
         ...errorResponses,
       },
     },

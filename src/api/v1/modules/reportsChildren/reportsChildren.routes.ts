@@ -7,67 +7,36 @@ import {
   childIdParamsSchema,
   createReportsChildSchema,
   listReportsChildrenQuerySchema,
+  rejectReportSchema,
   reportIdParamsSchema,
   updateReportsChildSchema,
 } from "../../validators/reportsChildren.validator.js";
 import {
+  createNextRevisionController,
   createReportForChildController,
   deleteReportController,
   getReportByIdController,
   listReportsByChildController,
+  listRevisionHistoryController,
+  rejectReportController,
+  submitReportController,
   updateReportController,
 } from "./reportsChildren.controller.js";
 
 export const reportsChildrenRoutes = Router();
+const protectedRoute = [authRateLimiter, authMiddleware] as const;
 
-reportsChildrenRoutes.get(
-  "/reports-children/child/:childId",
-  authRateLimiter,
-  authMiddleware,
-  validate(childIdParamsSchema, "params"),
-  validate(listReportsChildrenQuerySchema, "query"),
-  listReportsByChildController,
-);
-
-reportsChildrenRoutes.post(
-  "/reports-children/child/:childId",
-  authRateLimiter,
-  authMiddleware,
-  validate(childIdParamsSchema, "params"),
-  validate(createReportsChildSchema),
-  createReportForChildController,
-);
-
-reportsChildrenRoutes.get(
-  "/reports-children/:id",
-  authRateLimiter,
-  authMiddleware,
-  validate(reportIdParamsSchema, "params"),
-  getReportByIdController,
-);
-
-reportsChildrenRoutes.patch(
-  "/reports-children/:id",
-  authRateLimiter,
-  authMiddleware,
-  validate(reportIdParamsSchema, "params"),
-  validate(updateReportsChildSchema),
-  updateReportController,
-);
-
-reportsChildrenRoutes.delete(
-  "/reports-children/:id",
-  authRateLimiter,
-  authMiddleware,
-  validate(reportIdParamsSchema, "params"),
-  deleteReportController,
-);
-
-reportsChildrenRoutes.get("/reports-children", authRateLimiter, (_req, res) => {
-  const data = {};
-  const message = "ReportsChildren Routes Ok";
-  sendSuccess(res, data, message);
-});
+reportsChildrenRoutes.get("/reports-children/child/:childId", ...protectedRoute, validate(childIdParamsSchema, "params"), validate(listReportsChildrenQuerySchema, "query"), listReportsByChildController);
+reportsChildrenRoutes.post("/reports-children/child/:childId", ...protectedRoute, validate(childIdParamsSchema, "params"), validate(createReportsChildSchema), createReportForChildController);
+reportsChildrenRoutes.get("/reports-children/:id/revisions", ...protectedRoute, validate(reportIdParamsSchema, "params"), listRevisionHistoryController);
+reportsChildrenRoutes.patch("/reports-children/:id/draft", ...protectedRoute, validate(reportIdParamsSchema, "params"), validate(updateReportsChildSchema), updateReportController);
+reportsChildrenRoutes.post("/reports-children/:id/submissions", ...protectedRoute, validate(reportIdParamsSchema, "params"), submitReportController);
+reportsChildrenRoutes.post("/reports-children/:id/rejections", ...protectedRoute, validate(reportIdParamsSchema, "params"), validate(rejectReportSchema), rejectReportController);
+reportsChildrenRoutes.post("/reports-children/:id/revisions", ...protectedRoute, validate(reportIdParamsSchema, "params"), createNextRevisionController);
+reportsChildrenRoutes.get("/reports-children/:id", ...protectedRoute, validate(reportIdParamsSchema, "params"), getReportByIdController);
+// Deprecated Phase 0 compatibility alias. New clients must use /:id/draft.
+reportsChildrenRoutes.patch("/reports-children/:id", ...protectedRoute, validate(reportIdParamsSchema, "params"), validate(updateReportsChildSchema), updateReportController);
+reportsChildrenRoutes.delete("/reports-children/:id", ...protectedRoute, validate(reportIdParamsSchema, "params"), deleteReportController);
+reportsChildrenRoutes.get("/reports-children", authRateLimiter, (_req, res) => sendSuccess(res, {}, "ReportsChildren Routes Ok"));
 
 export default reportsChildrenRoutes;
-

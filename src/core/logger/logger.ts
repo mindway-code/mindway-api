@@ -1,21 +1,31 @@
-import pino from "pino";
+import pino, { type LoggerOptions } from "pino";
 import { pinoHttp } from "pino-http";
 import type { Request, Response } from "express";
 import { env } from "../config/env.js";
 
-export const logger = pino({
+export const loggerOptions: LoggerOptions = {
   level: env.LOG_LEVEL,
   redact: {
     paths: [
       "req.headers.authorization",
       "req.headers.cookie",
       "req.body.password",
+      "req.body.currentPassword",
+      "req.body.newPassword",
+      "req.body.code",
+      "req.body.recoveryCode",
+      "req.body.recoveryCodes",
+      "req.body.secret",
+      "req.body.manualSecret",
+      "req.body.otpauthUri",
       "req.body.refreshToken",
       "res.headers['set-cookie']",
     ],
     remove: true,
   },
-});
+};
+
+export const logger = pino(loggerOptions);
 
 export const httpLogger = pinoHttp<Request, Response>({
   logger,

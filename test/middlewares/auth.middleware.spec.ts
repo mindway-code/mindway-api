@@ -25,7 +25,33 @@ describe("middlewares: authMiddleware", () => {
 
     authMiddleware(req, res, next);
 
-    expect(next).toHaveBeenCalledWith(expect.objectContaining({ code: "UNAUTHORIZED", statusCode: 401 }));
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ code: "ACCESS_TOKEN_MISSING", statusCode: 401 }));
+  });
+
+  it("calls next with ACCESS_TOKEN_INVALID for a malformed header", () => {
+    const req = mockReq({ headers: { authorization: "Basic token" } as any });
+    const res = mockRes();
+    const next = jest.fn();
+
+    jwtUtils.extractBearerToken.mockReturnValue(null);
+    authMiddleware(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ code: "ACCESS_TOKEN_INVALID", statusCode: 401 }));
+  });
+
+  it.each(["ACCESS_TOKEN_INVALID", "ACCESS_TOKEN_EXPIRED"])("preserves %s verification errors", (code) => {
+    const req = mockReq({ headers: { authorization: "Bearer token" } as any });
+    const res = mockRes();
+    const next = jest.fn();
+    const error = { code, statusCode: 401 };
+
+    jwtUtils.extractBearerToken.mockReturnValue("token");
+    jwtUtils.verifyAccessToken.mockImplementation(() => {
+      throw error;
+    });
+    authMiddleware(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(error);
   });
 
   it("attaches req.user when token is valid", () => {

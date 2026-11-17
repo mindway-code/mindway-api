@@ -6,7 +6,7 @@ const redisUrl = env.REDIS_URL;
 let redisClient: RedisClientType | null = null;
 let connectPromise: Promise<RedisClientType | null> | null = null;
 
-function getRedisClient() {
+export function getRedisClient() {
   if (!redisUrl) return null;
 
   if (!redisClient) {
@@ -20,21 +20,30 @@ function getRedisClient() {
   return redisClient;
 }
 
-async function getConnectedRedisClient() {
+export async function getStrictRedisClient(): Promise<RedisClientType> {
   const client = getRedisClient();
-  if (!client) return null;
-  if (client.isOpen) return client;
+  if (!client) throw new Error("Redis is not configured");
+  if (client.isReady || client.isOpen) return client;
 
   connectPromise ??= client
     .connect()
     .then(() => client)
-    .catch((error) => {
-      console.error("Redis connection failed. Cache will be skipped.", error);
+    .finally(() => {
       connectPromise = null;
-      return null;
     });
 
-  return connectPromise;
+  const connected = await connectPromise;
+  if (!connected) throw new Error("Redis connection failed");
+  return connected;
+}
+
+async function getConnectedRedisClient() {
+  try {
+    return await getStrictRedisClient();
+  } catch (error) {
+    console.error("Redis connection failed. Cache will be skipped.", error);
+    return null;
+  }
 }
 
 /**

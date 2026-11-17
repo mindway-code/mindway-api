@@ -30,11 +30,11 @@ export type UserDTO = {
 export type UpdateUserDTO = {
   name?: string;
   email?: string | null;
-  password?: string;
-  passwordHash?: string;
-  role?: UserRole;
-  provider?: "local" | "google";
-  googleId?: string;
+};
+
+export type ChangeMyPasswordDTO = {
+  currentPassword: string;
+  newPassword: string;
 };
 
 export type DeleteUserResult = { id: string };

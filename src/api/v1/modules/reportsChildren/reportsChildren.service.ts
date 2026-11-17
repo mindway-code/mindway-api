@@ -1,31 +1,36 @@
 import { pagination } from "../../../../utils/pagination.js";
 import { invalidateCachePatterns } from "../../../../utils/cache.js";
-import { badRequest, forbidden, notFound } from "../../../../core/errors/httpError.js";
+import { badRequest, forbidden, notFound, reportError } from "../../../../core/errors/httpError.js";
 import type { UserRole } from "../../../../utils/crypto/jwt.js";
+import { calculateReportContentHash } from "../../../../utils/crypto/contentHash.js";
 import type { ChildWithAccessCodeRecord } from "../children/children.types.js";
 import { getChildById } from "../../../../infra/database/repositories/children.repository.js";
+import { createAssociationChild, findAssociationByUserAndChild } from "../../../../infra/database/repositories/associationChildren.repository.js";
 import {
-  createAssociationChild,
-  findAssociationByUserAndChild,
-} from "../../../../infra/database/repositories/associationChildren.repository.js";
-import {
-  createReportsChild,
-  deleteReportsChild,
-  getReportsChildById,
-  listReportsChildrenByChild,
-  updateReportsChild,
+  archiveReportAggregate,
+  createNextDraftRevision,
+  createReportWithInitialRevision,
+  listReportAggregatesByChild,
+  listReportRevisionHistory,
+  loadReportAggregate,
+  markRevisionRejected,
+  submitDraftRevision,
+  updateDraftRevision,
 } from "../../../../infra/database/repositories/reportsChildren.repository.js";
 import type {
   CreateReportsChildDTO,
-  CreateReportsChildInput,
   ListReportsChildrenResponse,
-  ReportsChildRecord,
+  RejectReportDTO,
+  ReportAggregateRecord,
+  ReportContentFields,
+  ReportRevisionRecord,
+  ReportRevisionView,
+  ReportView,
   UpdateReportsChildDTO,
-  UpdateReportsChildInput,
 } from "./reportsChildren.types.js";
+import { decideReportCapabilities } from "./reportsChildren.policy.js";
 
 type ChildAccessContext = {
-  child: { id: string; responsibleId: string; secondaryResponsibleId: string | null };
   isAdmin: boolean;
   isResponsible: boolean;
   isSecondaryResponsible: boolean;
@@ -38,63 +43,150 @@ export type ReportsChildrenServiceDeps = {
   badRequest: typeof badRequest;
   forbidden: typeof forbidden;
   notFound: typeof notFound;
+  reportError: typeof reportError;
+  calculateReportContentHash: typeof calculateReportContentHash;
   getChildById: typeof getChildById;
   findAssociationByUserAndChild: typeof findAssociationByUserAndChild;
   createAssociationChild: typeof createAssociationChild;
-  listReportsChildrenByChild: typeof listReportsChildrenByChild;
-  getReportsChildById: typeof getReportsChildById;
-  createReportsChild: typeof createReportsChild;
-  updateReportsChild: typeof updateReportsChild;
-  deleteReportsChild: typeof deleteReportsChild;
+  listReportAggregatesByChild: typeof listReportAggregatesByChild;
+  loadReportAggregate: typeof loadReportAggregate;
+  createReportWithInitialRevision: typeof createReportWithInitialRevision;
+  updateDraftRevision: typeof updateDraftRevision;
+  submitDraftRevision: typeof submitDraftRevision;
+  createNextDraftRevision: typeof createNextDraftRevision;
+  markRevisionRejected: typeof markRevisionRejected;
+  listReportRevisionHistory: typeof listReportRevisionHistory;
+  archiveReportAggregate: typeof archiveReportAggregate;
 };
 
 const CHILDREN_CACHE_PATTERNS = ["children:list:*", "children:accessible:*"];
 
-function isUniqueConstraintError(err: unknown): boolean {
-  return (err as { code?: string } | null)?.code === "P2002";
+function isUniqueConstraintError(error: unknown): boolean {
+  return (error as { code?: string } | null)?.code === "P2002";
 }
 
 async function invalidateChildrenCache() {
   await invalidateCachePatterns(CHILDREN_CACHE_PATTERNS);
 }
 
-async function buildChildAccessContext(deps: ReportsChildrenServiceDeps, params: { requesterId: string; requesterRole: UserRole; childId: string }): Promise<ChildAccessContext> {
-  const { requesterId, requesterRole, childId } = params;
-
-  const child = await deps.getChildById(childId);
-  if (!child) throw deps.notFound("Child not found");
-
-  const isAdmin = requesterRole === "admin";
-  const isResponsible = child.responsibleId === requesterId;
-  const isSecondaryResponsible = child.secondaryResponsibleId === requesterId;
-  const isAssociated = !!(await deps.findAssociationByUserAndChild(requesterId, childId));
-
-  const hasAccess = isAdmin || isResponsible || isSecondaryResponsible || isAssociated;
-
+function revisionView(revision: ReportRevisionRecord): ReportRevisionView {
   return {
-    child: { id: child.id, responsibleId: child.responsibleId, secondaryResponsibleId: child.secondaryResponsibleId ?? null },
+    id: revision.id,
+    revisionNumber: revision.revisionNumber,
+    status: revision.status,
+    title: revision.title,
+    behavior: revision.behavior,
+    difficulty: revision.difficulty,
+    recommendation: revision.recommendation,
+    submittedAt: revision.submittedAt,
+    rejectedAt: revision.rejectedAt,
+    rejectionReason: revision.rejectionReason,
+    createdAt: revision.createdAt,
+    updatedAt: revision.updatedAt,
+  };
+}
+
+function findRevision(report: ReportAggregateRecord, revisionNumber: number | null): ReportRevisionRecord | null {
+  if (revisionNumber === null) return null;
+  return report.revisions.find((revision) => revision.revisionNumber === revisionNumber) ?? null;
+}
+
+function currentRevision(report: ReportAggregateRecord): ReportRevisionRecord {
+  const revision = findRevision(report, report.currentRevisionNumber);
+  if (!revision) throw reportError({ code: "REPORT_REVISION_CONFLICT", message: "Current report revision is unavailable" });
+  return revision;
+}
+
+async function buildChildAccessContext(
+  deps: ReportsChildrenServiceDeps,
+  params: { requesterId: string; requesterRole: UserRole; childId: string },
+): Promise<ChildAccessContext> {
+  const child = await deps.getChildById(params.childId);
+  if (!child) throw deps.notFound("Child not found");
+  const isAdmin = params.requesterRole === "admin";
+  const isResponsible = child.responsibleId === params.requesterId;
+  const isSecondaryResponsible = child.secondaryResponsibleId === params.requesterId;
+  const isAssociated = !!(await deps.findAssociationByUserAndChild(params.requesterId, params.childId));
+  return {
     isAdmin,
     isResponsible,
     isSecondaryResponsible,
     isAssociated,
-    hasAccess,
+    hasAccess: isAdmin || isResponsible || isSecondaryResponsible || isAssociated,
   };
 }
 
-async function ensureAccessByChildId(deps: ReportsChildrenServiceDeps, params: { requesterId: string; requesterRole: UserRole; childId: string }): Promise<ChildAccessContext> {
-  const ctx = await buildChildAccessContext(deps, params);
-  if (!ctx.hasAccess) throw deps.forbidden("You do not have access to this child.");
-  return ctx;
+async function ensureAccessByChildId(
+  deps: ReportsChildrenServiceDeps,
+  params: { requesterId: string; requesterRole: UserRole; childId: string },
+) {
+  const context = await buildChildAccessContext(deps, params);
+  if (!context.hasAccess) throw deps.forbidden("You do not have access to this child.");
+  return context;
 }
 
-function canManageReport(params: { ctx: ChildAccessContext; requesterId: string; report: { userId: string } }) {
-  const { ctx, requesterId, report } = params;
-  if (ctx.isAdmin) return true;
-  if (ctx.isResponsible || ctx.isSecondaryResponsible) return true;
-  return report.userId === requesterId;
+function toReportView(params: {
+  report: ReportAggregateRecord;
+  context: ChildAccessContext;
+  requesterId: string;
+  requesterRole: UserRole;
+}): ReportView {
+  const { report, context, requesterId, requesterRole } = params;
+  const current = currentRevision(report);
+  const published = findRevision(report, report.publishedRevisionNumber);
+  const canInspectWorkingRevision = requesterId === report.userId || requesterRole === "admin";
+  const displayRevision = canInspectWorkingRevision ? current : published ?? current;
+  const capabilities = decideReportCapabilities({
+    requesterId,
+    requesterRole,
+    reportAuthorId: report.userId,
+    isResponsible: context.isResponsible,
+    isSecondaryResponsible: context.isSecondaryResponsible,
+    isAssociated: context.isAssociated,
+    currentStatus: current.status,
+    publishedRevisionNumber: report.publishedRevisionNumber,
+    archived: report.archivedAt !== null,
+  });
+  return {
+    id: report.id,
+    childId: report.childId,
+    userRole: report.userRole,
+    author: report.user,
+    lifecycle: {
+      status: displayRevision.status,
+      currentRevisionNumber: report.currentRevisionNumber,
+      publishedRevisionNumber: report.publishedRevisionNumber,
+      hasUnpublishedChanges:
+        report.publishedRevisionNumber === null
+          ? current.status !== "LEGACY_UNVALIDATED"
+          : report.currentRevisionNumber !== report.publishedRevisionNumber,
+    },
+    revision: revisionView(displayRevision),
+    validation: null,
+    capabilities,
+    createdAt: report.createdAt,
+    updatedAt: report.updatedAt,
+  };
+}
+
+function normalizeContent(dto: CreateReportsChildDTO): ReportContentFields {
+  return {
+    title: dto.title.trim(),
+    behavior: dto.behavior ?? null,
+    difficulty: dto.difficulty ?? null,
+    recommendation: dto.recommendation ?? null,
+  };
 }
 
 export function makeReportsChildrenServices(deps: ReportsChildrenServiceDeps) {
+  async function loadAccessibleReport(params: { requesterId: string; requesterRole: UserRole; reportId: string }) {
+    const report = await deps.loadReportAggregate(params.reportId);
+    if (!report) throw deps.notFound("Report not found");
+    if (report.archivedAt) throw deps.reportError({ code: "REPORT_ARCHIVED", message: "Report is archived" });
+    const context = await ensureAccessByChildId(deps, { ...params, childId: report.childId });
+    return { report, context };
+  }
+
   async function listReportsByChildService(params: {
     requesterId: string;
     requesterRole: UserRole;
@@ -102,17 +194,15 @@ export function makeReportsChildrenServices(deps: ReportsChildrenServiceDeps) {
     pageRaw: unknown;
     pageSizeRaw: unknown;
   }): Promise<ListReportsChildrenResponse> {
-    const { requesterId, requesterRole, childId, pageRaw, pageSizeRaw } = params;
-    if (!requesterId) throw deps.badRequest("requesterId is required");
-    if (!childId) throw deps.badRequest("childId is required");
-
-    await ensureAccessByChildId(deps, { requesterId, requesterRole, childId });
-
-    const { page, pageSize, skip, take } = deps.pagination(pageRaw, pageSizeRaw);
-    const { items, total } = await deps.listReportsChildrenByChild(childId, { skip, take });
-    const totalPages = Math.max(1, Math.ceil(total / pageSize));
-
-    return { items, meta: { pagination: { page, pageSize, total, totalPages } } };
+    if (!params.requesterId) throw deps.badRequest("requesterId is required");
+    if (!params.childId) throw deps.badRequest("childId is required");
+    const context = await ensureAccessByChildId(deps, params);
+    const { page, pageSize, skip, take } = deps.pagination(params.pageRaw, params.pageSizeRaw);
+    const { items, total } = await deps.listReportAggregatesByChild(params.childId, { skip, take });
+    return {
+      items: items.map((report) => toReportView({ report, context, requesterId: params.requesterId, requesterRole: params.requesterRole })),
+      meta: { pagination: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) } },
+    };
   }
 
   async function createReportForChildService(params: {
@@ -120,60 +210,37 @@ export function makeReportsChildrenServices(deps: ReportsChildrenServiceDeps) {
     requesterRole: UserRole;
     childId: string;
     dto: CreateReportsChildDTO;
-  }): Promise<ReportsChildRecord> {
-    const { requesterId, requesterRole, childId, dto } = params;
-    if (!requesterId) throw deps.badRequest("requesterId is required");
-    if (!childId) throw deps.badRequest("childId is required");
-
-    const title = dto?.title?.trim();
-    if (!title) throw deps.badRequest("title is required");
-
-    // Access rule:
-    // - Responsible/secondary/associated/admin can create.
-    // - If requester has no access, allow creating an association only when a valid accessCode is provided for this child.
-    const baseCtx = await buildChildAccessContext(deps, { requesterId, requesterRole, childId });
-    if (!baseCtx.hasAccess) {
-      const accessCode = dto?.accessCode?.trim();
+  }): Promise<ReportView> {
+    const content = normalizeContent(params.dto);
+    if (!content.title) throw deps.badRequest("title is required");
+    let context = await buildChildAccessContext(deps, params);
+    if (!context.hasAccess) {
+      const accessCode = params.dto.accessCode?.trim();
       if (!accessCode) throw deps.forbidden("You do not have access to this child.");
-
-      const childWithCode = (await deps.getChildById(childId, { includeAccessCode: true })) as ChildWithAccessCodeRecord | null;
-      if (!childWithCode) throw deps.notFound("Child not found");
-
-      if (childWithCode.accessCode !== accessCode) throw deps.notFound("Invalid child access code.");
-
+      const child = (await deps.getChildById(params.childId, { includeAccessCode: true })) as ChildWithAccessCodeRecord | null;
+      if (!child) throw deps.notFound("Child not found");
+      if (child.accessCode !== accessCode) throw deps.notFound("Invalid child access code.");
       try {
-        await deps.createAssociationChild(requesterId, childId);
+        await deps.createAssociationChild(params.requesterId, params.childId);
         await invalidateChildrenCache();
-      } catch (err) {
-        if (!isUniqueConstraintError(err)) throw err;
-        await invalidateChildrenCache();
+      } catch (error) {
+        if (!isUniqueConstraintError(error)) throw error;
       }
+      context = { ...context, isAssociated: true, hasAccess: true };
     }
-
-    const input: CreateReportsChildInput = {
-      childId,
-      userId: requesterId,
-      userRole: requesterRole,
-      title,
-      behavior: dto.behavior ?? null,
-      difficulty: dto.difficulty ?? null,
-      recommendation: dto.recommendation ?? null,
-    };
-
-    return deps.createReportsChild(input);
+    const report = await deps.createReportWithInitialRevision({
+      ...content,
+      childId: params.childId,
+      userId: params.requesterId,
+      userRole: params.requesterRole,
+      contentHash: deps.calculateReportContentHash(content),
+    });
+    return toReportView({ report, context, requesterId: params.requesterId, requesterRole: params.requesterRole });
   }
 
-  async function getReportByIdService(params: { requesterId: string; requesterRole: UserRole; reportId: string }): Promise<ReportsChildRecord> {
-    const { requesterId, requesterRole, reportId } = params;
-    if (!requesterId) throw deps.badRequest("requesterId is required");
-    if (!reportId) throw deps.badRequest("reportId is required");
-
-    const report = await deps.getReportsChildById(reportId);
-    if (!report) throw deps.notFound("Report not found");
-
-    await ensureAccessByChildId(deps, { requesterId, requesterRole, childId: report.childId });
-
-    return report;
+  async function getReportByIdService(params: { requesterId: string; requesterRole: UserRole; reportId: string }) {
+    const { report, context } = await loadAccessibleReport(params);
+    return toReportView({ report, context, requesterId: params.requesterId, requesterRole: params.requesterRole });
   }
 
   async function updateReportService(params: {
@@ -181,42 +248,92 @@ export function makeReportsChildrenServices(deps: ReportsChildrenServiceDeps) {
     requesterRole: UserRole;
     reportId: string;
     dto: UpdateReportsChildDTO;
-  }): Promise<ReportsChildRecord> {
-    const { requesterId, requesterRole, reportId, dto } = params;
-    if (!requesterId) throw deps.badRequest("requesterId is required");
-    if (!reportId) throw deps.badRequest("reportId is required");
-
-    const existing = await deps.getReportsChildById(reportId);
-    if (!existing) throw deps.notFound("Report not found");
-
-    const ctx = await ensureAccessByChildId(deps, { requesterId, requesterRole, childId: existing.childId });
-    if (!canManageReport({ ctx, requesterId, report: existing })) throw deps.forbidden();
-
-    const input: UpdateReportsChildInput = {
-      ...(dto.title !== undefined ? { title: dto.title.trim() } : {}),
-      ...(dto.behavior !== undefined ? { behavior: dto.behavior } : {}),
-      ...(dto.difficulty !== undefined ? { difficulty: dto.difficulty } : {}),
-      ...(dto.recommendation !== undefined ? { recommendation: dto.recommendation } : {}),
+  }) {
+    if (Object.keys(params.dto).length === 0) throw deps.badRequest("No fields to update");
+    const { report, context } = await loadAccessibleReport(params);
+    const current = currentRevision(report);
+    const capabilities = toReportView({ report, context, requesterId: params.requesterId, requesterRole: params.requesterRole }).capabilities;
+    if (!capabilities.canEditDraft) {
+      if (current.status !== "DRAFT") throw deps.reportError({ code: "REPORT_NOT_EDITABLE", message: "Only the current draft can be edited" });
+      throw deps.forbidden();
+    }
+    const content: ReportContentFields = {
+      title: params.dto.title !== undefined ? params.dto.title.trim() : current.title,
+      behavior: params.dto.behavior !== undefined ? params.dto.behavior : current.behavior,
+      difficulty: params.dto.difficulty !== undefined ? params.dto.difficulty : current.difficulty,
+      recommendation: params.dto.recommendation !== undefined ? params.dto.recommendation : current.recommendation,
     };
-
-    if (dto.title !== undefined && !input.title) throw deps.badRequest("title cannot be empty");
-    if (Object.keys(input).length === 0) throw deps.badRequest("No fields to update");
-
-    return deps.updateReportsChild(reportId, input);
+    if (!content.title) throw deps.badRequest("title cannot be empty");
+    const updated = await deps.updateDraftRevision({
+      ...content,
+      reportId: report.id,
+      revisionNumber: report.currentRevisionNumber,
+      contentHash: deps.calculateReportContentHash(content),
+    });
+    if (!updated) throw deps.reportError({ code: "REPORT_REVISION_CONFLICT", message: "Draft changed concurrently" });
+    return getReportByIdService(params);
   }
 
-  async function deleteReportService(params: { requesterId: string; requesterRole: UserRole; reportId: string }): Promise<{ id: string }> {
-    const { requesterId, requesterRole, reportId } = params;
-    if (!requesterId) throw deps.badRequest("requesterId is required");
-    if (!reportId) throw deps.badRequest("reportId is required");
+  async function submitReportService(params: { requesterId: string; requesterRole: UserRole; reportId: string }) {
+    const { report, context } = await loadAccessibleReport(params);
+    const current = currentRevision(report);
+    const capabilities = toReportView({ report, context, requesterId: params.requesterId, requesterRole: params.requesterRole }).capabilities;
+    if (!capabilities.canSubmit) {
+      if (current.status === "SUBMITTED") throw deps.reportError({ code: "REPORT_ALREADY_SUBMITTED", message: "Report is already submitted" });
+      if (current.status !== "DRAFT") throw deps.reportError({ code: "REPORT_NOT_DRAFT", message: "Only a draft can be submitted" });
+      throw deps.forbidden();
+    }
+    if (!current.title.trim()) throw deps.badRequest("title is required");
+    const submitted = await deps.submitDraftRevision({
+      reportId: report.id,
+      revisionNumber: report.currentRevisionNumber,
+      contentHash: deps.calculateReportContentHash(current),
+    });
+    if (!submitted) throw deps.reportError({ code: "REPORT_REVISION_CONFLICT", message: "Report submission conflicted with another transition" });
+    return getReportByIdService(params);
+  }
 
-    const existing = await deps.getReportsChildById(reportId);
-    if (!existing) throw deps.notFound("Report not found");
+  async function createNextRevisionService(params: { requesterId: string; requesterRole: UserRole; reportId: string }) {
+    const { report, context } = await loadAccessibleReport(params);
+    const view = toReportView({ report, context, requesterId: params.requesterId, requesterRole: params.requesterRole });
+    if (!view.capabilities.canCreateRevision) throw deps.reportError({ code: "REPORT_NOT_EDITABLE", message: "A new revision cannot be created now" });
+    const published = findRevision(report, report.publishedRevisionNumber);
+    if (!published) throw deps.reportError({ code: "REPORT_REVISION_CONFLICT", message: "Published revision is unavailable" });
+    const created = await deps.createNextDraftRevision({
+      reportId: report.id,
+      createdById: params.requesterId,
+      expectedCurrentRevisionNumber: report.currentRevisionNumber,
+      baseRevision: published,
+      contentHash: deps.calculateReportContentHash(published),
+    });
+    if (!created) throw deps.reportError({ code: "REPORT_REVISION_CONFLICT", message: "Revision was created concurrently" });
+    return getReportByIdService(params);
+  }
 
-    const ctx = await ensureAccessByChildId(deps, { requesterId, requesterRole, childId: existing.childId });
-    if (!canManageReport({ ctx, requesterId, report: existing })) throw deps.forbidden();
+  async function rejectReportService(params: { requesterId: string; requesterRole: UserRole; reportId: string; dto: RejectReportDTO }) {
+    const { report } = await loadAccessibleReport(params);
+    if (params.requesterRole !== "admin") throw deps.forbidden();
+    const reason = params.dto.reason.trim();
+    if (!reason) throw deps.badRequest("rejection reason is required");
+    const current = currentRevision(report);
+    if (current.status !== "SUBMITTED") throw deps.reportError({ code: "REPORT_NOT_DRAFT", message: "Only a submitted report can be rejected" });
+    const rejected = await deps.markRevisionRejected({ reportId: report.id, revisionNumber: report.currentRevisionNumber, reason });
+    if (!rejected) throw deps.reportError({ code: "REPORT_REVISION_CONFLICT", message: "Report rejection conflicted with another transition" });
+    return getReportByIdService(params);
+  }
 
-    return deps.deleteReportsChild(reportId);
+  async function listRevisionHistoryService(params: { requesterId: string; requesterRole: UserRole; reportId: string }) {
+    await loadAccessibleReport(params);
+    return (await deps.listReportRevisionHistory(params.reportId)).map(revisionView);
+  }
+
+  async function deleteReportService(params: { requesterId: string; requesterRole: UserRole; reportId: string }) {
+    const { report, context } = await loadAccessibleReport(params);
+    const capabilities = toReportView({ report, context, requesterId: params.requesterId, requesterRole: params.requesterRole }).capabilities;
+    if (!capabilities.canArchive) throw deps.forbidden();
+    const archived = await deps.archiveReportAggregate({ reportId: report.id, archivedById: params.requesterId });
+    if (!archived) throw deps.reportError({ code: "REPORT_ARCHIVED", message: "Report is already archived" });
+    return { id: report.id };
   }
 
   return {
@@ -224,6 +341,10 @@ export function makeReportsChildrenServices(deps: ReportsChildrenServiceDeps) {
     createReportForChildService,
     getReportByIdService,
     updateReportService,
+    submitReportService,
+    createNextRevisionService,
+    rejectReportService,
+    listRevisionHistoryService,
     deleteReportService,
   };
 }
@@ -233,14 +354,20 @@ const defaultDeps: ReportsChildrenServiceDeps = {
   badRequest,
   forbidden,
   notFound,
+  reportError,
+  calculateReportContentHash,
   getChildById,
   findAssociationByUserAndChild,
   createAssociationChild,
-  listReportsChildrenByChild,
-  getReportsChildById,
-  createReportsChild,
-  updateReportsChild,
-  deleteReportsChild,
+  listReportAggregatesByChild,
+  loadReportAggregate,
+  createReportWithInitialRevision,
+  updateDraftRevision,
+  submitDraftRevision,
+  createNextDraftRevision,
+  markRevisionRejected,
+  listReportRevisionHistory,
+  archiveReportAggregate,
 };
 
 export const {
@@ -248,13 +375,9 @@ export const {
   createReportForChildService,
   getReportByIdService,
   updateReportService,
+  submitReportService,
+  createNextRevisionService,
+  rejectReportService,
+  listRevisionHistoryService,
   deleteReportService,
 } = makeReportsChildrenServices(defaultDeps);
-
-export default {
-  listReportsByChildService,
-  createReportForChildService,
-  getReportByIdService,
-  updateReportService,
-  deleteReportService,
-};

@@ -12,7 +12,14 @@ import {
   findActiveRefreshTokensByUserId,
   revokeRefreshTokenById,
 } from "../../../../infra/database/repositories/auth.repository.js";
-import type { CreateUserInput, LoginResult, RegisterDTO, RegisterResult } from "./auth.types.js";
+import {
+  PUBLIC_REGISTRATION_ROLES,
+  type CreateUserInput,
+  type LoginResult,
+  type PublicRegistrationRole,
+  type RegisterDTO,
+  type RegisterResult,
+} from "./auth.types.js";
 
 
 
@@ -46,15 +53,16 @@ export function makeAuthServices(deps: AuthServiceDeps) {
     const password = dto.password;
     const confirmPassword = dto.confirmPassword;
 
-    if (password != confirmPassword) throw deps.badRequest("Password and ConfirmPassword are not equal");
+    if (password !== confirmPassword) throw deps.badRequest("Password and ConfirmPassword are not equal");
 
-    if (!name || !email || !password) throw deps.badRequest("Missing credentials");
+    if (!name || !email || !password || !dto.role) throw deps.badRequest("Missing credentials");
+
+    if (!PUBLIC_REGISTRATION_ROLES.includes(dto.role as PublicRegistrationRole)) {
+      throw deps.badRequest("Invalid public registration role");
+    }
 
     const existing = await deps.findAuthUserByEmail(email);
     if (existing) throw deps.badRequest("Email already in use");
-
-    const role: UserRole = dto.role ?? "common";
-    const provider = dto.provider ?? "local";
 
     const passwordHash = await deps.hashPassword(password);
 
@@ -62,9 +70,9 @@ export function makeAuthServices(deps: AuthServiceDeps) {
       name,
       email,
       passwordHash,
-      role,
-      provider,
-      googleId: dto.googleId ?? null,
+      role: dto.role,
+      provider: "local",
+      googleId: null,
     };
 
     const user = await deps.createLocalUser(input);

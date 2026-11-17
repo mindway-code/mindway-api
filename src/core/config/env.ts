@@ -20,6 +20,15 @@ function isSupabaseDatabase(value: string) {
   return databaseHost(value).includes("supabase");
 }
 
+function isBase64KeyOfLength(value: string, bytes: number): boolean {
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value) || value.length % 4 !== 0) return false;
+  try {
+    return Buffer.from(value, "base64").length === bytes;
+  } catch {
+    return false;
+  }
+}
+
 const envSchema = z
   .object({
     APP_ENV: z.enum(appEnvironments),
@@ -50,6 +59,16 @@ const envSchema = z
     AUTH_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
     AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
     LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
+
+    MFA_ISSUER: z.string().trim().min(1),
+    MFA_TOTP_ENCRYPTION_KEY: z
+      .string()
+      .refine((value) => isBase64KeyOfLength(value, 32), "Must be a Base64-encoded 32-byte key"),
+    MFA_TOTP_ENCRYPTION_KEY_VERSION: z.coerce.number().int().positive(),
+    MFA_RECOVERY_CODE_PEPPER: z.string().min(32),
+    MFA_ENROLLMENT_TTL_SECONDS: z.coerce.number().int().positive().default(600),
+    MFA_ATTEMPT_WINDOW_SECONDS: z.coerce.number().int().positive().default(300),
+    MFA_ATTEMPT_MAX: z.coerce.number().int().positive().default(5),
 
     EMAIL_FROM: z.string().optional().default(""),
     GMAIL_USER: optionalEmail,

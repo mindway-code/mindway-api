@@ -1,5 +1,14 @@
 import type { UserRole } from "../../../../utils/crypto/jwt.js";
 
+export const PUBLIC_REGISTRATION_ROLES = [
+  "common",
+  "enterprise",
+  "professional",
+  "therapist",
+] as const;
+
+export type PublicRegistrationRole = (typeof PUBLIC_REGISTRATION_ROLES)[number];
+
 export type LoginPayload = {
   email: string;
   password: string;
@@ -24,9 +33,7 @@ export type RegisterDTO = {
   email: string;
   password: string;
   confirmPassword: string;
-  role?: UserRole;
-  provider?: "local" | "google";
-  googleId?: string | null;
+  role: PublicRegistrationRole;
 };
 
 // Types previously declared in the repository — moved here as single source of truth

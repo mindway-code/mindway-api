@@ -37,7 +37,23 @@ describe("utils: crypto/jwt", () => {
 
   it("verifyAccessToken throws unauthorized on invalid payload", () => {
     jwtLib.verify.mockReturnValue({ sub: 123 });
-    expect(() => verifyAccessToken("t")).toThrow();
+    expect(() => verifyAccessToken("t")).toThrow(expect.objectContaining({ code: "ACCESS_TOKEN_INVALID" }));
+  });
+
+  it("distinguishes expired tokens", () => {
+    const error = new Error("expired");
+    error.name = "TokenExpiredError";
+    jwtLib.verify.mockImplementation(() => {
+      throw error;
+    });
+    expect(() => verifyAccessToken("t")).toThrow(expect.objectContaining({ code: "ACCESS_TOKEN_EXPIRED" }));
+  });
+
+  it("classifies malformed or invalid tokens", () => {
+    jwtLib.verify.mockImplementation(() => {
+      throw new Error("invalid signature");
+    });
+    expect(() => verifyAccessToken("t")).toThrow(expect.objectContaining({ code: "ACCESS_TOKEN_INVALID" }));
   });
 
   it("verifyAccessToken returns decoded fields", () => {

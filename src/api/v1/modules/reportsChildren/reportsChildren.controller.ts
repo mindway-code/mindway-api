@@ -10,8 +10,9 @@ import {
   rejectReportService,
   submitReportService,
   updateReportService,
+  validateReportService,
 } from "./reportsChildren.service.js";
-import type { CreateReportsChildDTO, RejectReportDTO, UpdateReportsChildDTO } from "./reportsChildren.types.js";
+import type { CreateReportsChildDTO, RejectReportDTO, UpdateReportsChildDTO, ValidateReportDTO } from "./reportsChildren.types.js";
 
 function requester(req: Request) {
   return { requesterId: req.user!.id, requesterRole: req.user!.role };
@@ -73,4 +74,20 @@ export async function listRevisionHistoryController(req: Request, res: Response)
 export async function deleteReportController(req: Request, res: Response) {
   try { return sendSuccess(res, await deleteReportService({ ...requester(req), reportId: req.params.id! }), "Report archived"); }
   catch (error) { return sendError(res, error); }
+}
+
+export async function validateReportController(req: Request, res: Response) {
+  try {
+    const report = await validateReportService({
+      ...requester(req),
+      reportId: req.params.id!,
+      idempotencyKey: req.get("Idempotency-Key")!.trim(),
+      requestId: String(req.id ?? "unknown"),
+      dto: req.body as ValidateReportDTO,
+      stepUp: req.stepUp!,
+    });
+    return sendSuccess(res, report, "Report revision validated");
+  } catch (error) {
+    return sendError(res, error);
+  }
 }

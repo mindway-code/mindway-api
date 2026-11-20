@@ -6,16 +6,32 @@ import {
   getMfaStatusService,
   regenerateRecoveryCodesService,
   startTotpEnrollmentService,
+  issueStepUpGrantService,
 } from "./mfa.service.js";
 import type {
   ConfirmTotpEnrollmentDTO,
   MfaProtectedActionDTO,
   StartTotpEnrollmentDTO,
+  StepUpGrantDTO,
 } from "./mfa.types.js";
 
 export async function getMfaStatusController(req: Request, res: Response) {
   try {
     return sendSuccess(res, await getMfaStatusService(req.user!.id));
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+export async function issueStepUpGrantController(req: Request, res: Response) {
+  try {
+    const data = await issueStepUpGrantService({
+      userId: req.user!.id,
+      ip: req.ip ?? "unknown",
+      requestId: String(req.id ?? "unknown"),
+      dto: req.body as StepUpGrantDTO,
+    });
+    return sendSuccess(res, data, "Step-up grant issued");
   } catch (error) {
     return sendError(res, error);
   }

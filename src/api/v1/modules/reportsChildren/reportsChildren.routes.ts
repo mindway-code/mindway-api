@@ -2,6 +2,8 @@ import { Router } from "express";
 import authRateLimiter from "../../../../core/middlewares/rateLimit.middleware.js";
 import authMiddleware from "../../../../core/middlewares/auth.middleware.js";
 import { validate } from "../../../../core/middlewares/validate.middleware.js";
+import requireStepUp from "../../../../core/middlewares/requireStepUp.middleware.js";
+import requireIdempotencyKey from "../../../../core/middlewares/requireIdempotencyKey.middleware.js";
 import { sendSuccess } from "../../../../utils/response.js";
 import {
   childIdParamsSchema,
@@ -10,6 +12,7 @@ import {
   rejectReportSchema,
   reportIdParamsSchema,
   updateReportsChildSchema,
+  validateReportSchema,
 } from "../../validators/reportsChildren.validator.js";
 import {
   createNextRevisionController,
@@ -21,6 +24,7 @@ import {
   rejectReportController,
   submitReportController,
   updateReportController,
+  validateReportController,
 } from "./reportsChildren.controller.js";
 
 export const reportsChildrenRoutes = Router();
@@ -31,6 +35,19 @@ reportsChildrenRoutes.post("/reports-children/child/:childId", ...protectedRoute
 reportsChildrenRoutes.get("/reports-children/:id/revisions", ...protectedRoute, validate(reportIdParamsSchema, "params"), listRevisionHistoryController);
 reportsChildrenRoutes.patch("/reports-children/:id/draft", ...protectedRoute, validate(reportIdParamsSchema, "params"), validate(updateReportsChildSchema), updateReportController);
 reportsChildrenRoutes.post("/reports-children/:id/submissions", ...protectedRoute, validate(reportIdParamsSchema, "params"), submitReportController);
+reportsChildrenRoutes.post(
+  "/reports-children/:id/validations",
+  ...protectedRoute,
+  validate(reportIdParamsSchema, "params"),
+  validate(validateReportSchema),
+  requireIdempotencyKey,
+  requireStepUp({
+    action: "report.validate",
+    resourceType: "reportRevision",
+    getResourceId: (req) => req.body.revisionId as string,
+  }),
+  validateReportController,
+);
 reportsChildrenRoutes.post("/reports-children/:id/rejections", ...protectedRoute, validate(reportIdParamsSchema, "params"), validate(rejectReportSchema), rejectReportController);
 reportsChildrenRoutes.post("/reports-children/:id/revisions", ...protectedRoute, validate(reportIdParamsSchema, "params"), createNextRevisionController);
 reportsChildrenRoutes.get("/reports-children/:id", ...protectedRoute, validate(reportIdParamsSchema, "params"), getReportByIdController);

@@ -21,10 +21,19 @@ const service = {
   rejectReportService: jest.fn<(...args: any[]) => any>(),
   listRevisionHistoryService: jest.fn<(...args: any[]) => any>(),
   deleteReportService: jest.fn<(...args: any[]) => any>(),
+  validateReportService: jest.fn<(...args: any[]) => any>(),
+};
+
+const stepUp = {
+  default: () => (req: any, _res: unknown, next: (error?: unknown) => void) => {
+    req.stepUp = { method: "TOTP", factorId: "factor-1", idempotentReplay: false };
+    next();
+  },
 };
 
 jest.unstable_mockModule("../../src/core/middlewares/rateLimit.middleware.js", () => rateLimit);
 jest.unstable_mockModule("../../src/utils/crypto/jwt.js", () => jwt);
+jest.unstable_mockModule("../../src/core/middlewares/requireStepUp.middleware.js", () => stepUp);
 jest.unstable_mockModule("../../src/api/v1/modules/reportsChildren/reportsChildren.service.js", () => service);
 const { createApp } = await import("../../src/infra/http/app.js");
 
@@ -41,6 +50,7 @@ describe("integration: report revision routes", () => {
     }
     service.listRevisionHistoryService.mockResolvedValue([]);
     service.deleteReportService.mockResolvedValue({ id });
+    service.validateReportService.mockResolvedValue({ id });
   });
 
   it.each([
@@ -52,6 +62,7 @@ describe("integration: report revision routes", () => {
     ["post", `/api/reports-children/${id}/submissions`],
     ["post", `/api/reports-children/${id}/rejections`],
     ["post", `/api/reports-children/${id}/revisions`],
+    ["post", `/api/reports-children/${id}/validations`],
     ["delete", `/api/reports-children/${id}`],
   ] as Array<["get" | "post" | "patch" | "delete", string]>)("authenticates %s %s", async (method, path) => {
     await request(createApp())[method](path).expect(401);
@@ -66,10 +77,18 @@ describe("integration: report revision routes", () => {
     await request(createApp()).post(`/api/reports-children/${id}/submissions`).set(auth).expect(200);
     await request(createApp()).post(`/api/reports-children/${id}/rejections`).set(auth).send({ reason: "Needs changes" }).expect(200);
     await request(createApp()).post(`/api/reports-children/${id}/revisions`).set(auth).expect(200);
+    await request(createApp())
+      .post(`/api/reports-children/${id}/validations`)
+      .set(auth)
+      .set("X-MFA-Proof", "opaque-proof")
+      .set("Idempotency-Key", childId)
+      .send({ revisionId: childId, expectedContentHash: "a".repeat(64), type: "AUTHOR_ATTESTATION" })
+      .expect(200);
     await request(createApp()).delete(`/api/reports-children/${id}`).set(auth).expect(200);
     expect(service.submitReportService).toHaveBeenCalledTimes(1);
     expect(service.createNextRevisionService).toHaveBeenCalledTimes(1);
     expect(service.deleteReportService).toHaveBeenCalledTimes(1);
+    expect(service.validateReportService).toHaveBeenCalledTimes(1);
   });
 
   it("rejects malformed transition input before the service", async () => {

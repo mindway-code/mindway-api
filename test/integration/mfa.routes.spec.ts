@@ -25,6 +25,7 @@ const mfaService = {
   confirmTotpEnrollmentService: jest.fn<(...args: any[]) => any>(),
   regenerateRecoveryCodesService: jest.fn<(...args: any[]) => any>(),
   disableTotpService: jest.fn<(...args: any[]) => any>(),
+  issueStepUpGrantService: jest.fn<(...args: any[]) => any>(),
 };
 
 jest.unstable_mockModule("../../src/core/middlewares/rateLimit.middleware.js", () => authRateLimit);
@@ -42,6 +43,7 @@ const anonymousCases: Array<["get" | "post" | "delete", string]> = [
   ["post", `/api/auth/mfa/totp/enrollments/${enrollmentId}/confirm`],
   ["post", "/api/auth/mfa/recovery-codes/regenerate"],
   ["delete", "/api/auth/mfa/totp"],
+  ["post", "/api/auth/mfa/step-up-grants"],
 ];
 
 describe("integration: MFA route boundaries", () => {
@@ -56,6 +58,7 @@ describe("integration: MFA route boundaries", () => {
     mfaService.confirmTotpEnrollmentService.mockResolvedValue({ recoveryCodes: ["one-time-code"] });
     mfaService.regenerateRecoveryCodesService.mockResolvedValue({ recoveryCodes: ["new-one-time-code"] });
     mfaService.disableTotpService.mockResolvedValue(undefined);
+    mfaService.issueStepUpGrantService.mockResolvedValue({ grant: "opaque-proof", expiresIn: 300 });
   });
 
   it.each(anonymousCases)("requires authentication for %s %s", async (method, path) => {
@@ -84,13 +87,25 @@ describe("integration: MFA route boundaries", () => {
       .set(authorization)
       .send({ currentPassword: "current-password", code: "123456" })
       .expect(200);
+    await request(createApp())
+      .post("/api/auth/mfa/step-up-grants")
+      .set(authorization)
+      .send({
+        method: "TOTP",
+        code: "123456",
+        action: "report.validate",
+        resourceType: "reportRevision",
+        resourceId: enrollmentId,
+      })
+      .expect(200);
 
     expect(mfaService.getMfaStatusService).toHaveBeenCalledWith("user-1");
     expect(mfaService.startTotpEnrollmentService).toHaveBeenCalledTimes(1);
     expect(mfaService.confirmTotpEnrollmentService).toHaveBeenCalledTimes(1);
+    expect(mfaService.issueStepUpGrantService).toHaveBeenCalledTimes(1);
     expect(mfaService.regenerateRecoveryCodesService).toHaveBeenCalledTimes(1);
     expect(mfaService.disableTotpService).toHaveBeenCalledTimes(1);
-    expect(mfaRateLimit.default).toHaveBeenCalledTimes(4);
+    expect(mfaRateLimit.default).toHaveBeenCalledTimes(5);
   });
 
   it("rejects malformed enrollment IDs and bodies before the service", async () => {

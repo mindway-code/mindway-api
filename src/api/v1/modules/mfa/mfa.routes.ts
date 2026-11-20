@@ -8,6 +8,7 @@ import {
   mfaEnrollmentParamsSchema,
   mfaProtectedActionSchema,
   startTotpEnrollmentSchema,
+  stepUpGrantSchema,
 } from "../../validators/mfa.validator.js";
 import {
   confirmTotpEnrollmentController,
@@ -15,9 +16,19 @@ import {
   getMfaStatusController,
   regenerateRecoveryCodesController,
   startTotpEnrollmentController,
+  issueStepUpGrantController,
 } from "./mfa.controller.js";
 
 export const mfaRoutes = Router();
+
+mfaRoutes.post(
+  "/auth/mfa/step-up-grants",
+  authRateLimiter,
+  authMiddleware,
+  mfaRateLimitMiddleware,
+  validate(stepUpGrantSchema),
+  issueStepUpGrantController,
+);
 
 mfaRoutes.get("/auth/mfa", authRateLimiter, authMiddleware, getMfaStatusController);
 mfaRoutes.post(

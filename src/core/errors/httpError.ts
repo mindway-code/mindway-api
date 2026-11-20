@@ -20,11 +20,21 @@ export type ErrorCode =
   | "MFA_RATE_LIMITED"
   | "MFA_RECOVERY_CODE_INVALID"
   | "MFA_SECURITY_STORE_UNAVAILABLE"
+  | "MFA_PROOF_REQUIRED"
+  | "MFA_PROOF_INVALID"
+  | "MFA_PROOF_EXPIRED"
+  | "MFA_PROOF_ALREADY_USED"
+  | "MFA_PROOF_SCOPE_MISMATCH"
   | "REPORT_NOT_EDITABLE"
   | "REPORT_NOT_DRAFT"
   | "REPORT_ALREADY_SUBMITTED"
   | "REPORT_REVISION_CONFLICT"
-  | "REPORT_ARCHIVED";
+  | "REPORT_ARCHIVED"
+  | "REPORT_NOT_SUBMITTED"
+  | "REPORT_REVISION_MISMATCH"
+  | "REPORT_CONTENT_HASH_MISMATCH"
+  | "REPORT_ALREADY_VALIDATED"
+  | "REPORT_VALIDATOR_NOT_ALLOWED";
 
 export class HttpError extends Error {
   public readonly statusCode: number;
@@ -74,13 +84,28 @@ export const mfaError = (params: {
     | "MFA_CODE_REUSED"
     | "MFA_RATE_LIMITED"
     | "MFA_RECOVERY_CODE_INVALID"
-    | "MFA_SECURITY_STORE_UNAVAILABLE";
+    | "MFA_SECURITY_STORE_UNAVAILABLE"
+    | "MFA_PROOF_REQUIRED"
+    | "MFA_PROOF_INVALID"
+    | "MFA_PROOF_EXPIRED"
+    | "MFA_PROOF_ALREADY_USED"
+    | "MFA_PROOF_SCOPE_MISMATCH";
   statusCode: number;
   message: string;
 }) => new HttpError(params);
 
 export const reportError = (params: {
-  code: "REPORT_NOT_EDITABLE" | "REPORT_NOT_DRAFT" | "REPORT_ALREADY_SUBMITTED" | "REPORT_REVISION_CONFLICT" | "REPORT_ARCHIVED";
+  code:
+    | "REPORT_NOT_EDITABLE"
+    | "REPORT_NOT_DRAFT"
+    | "REPORT_ALREADY_SUBMITTED"
+    | "REPORT_REVISION_CONFLICT"
+    | "REPORT_ARCHIVED"
+    | "REPORT_NOT_SUBMITTED"
+    | "REPORT_REVISION_MISMATCH"
+    | "REPORT_CONTENT_HASH_MISMATCH"
+    | "REPORT_ALREADY_VALIDATED"
+    | "REPORT_VALIDATOR_NOT_ALLOWED";
   statusCode?: number;
   message: string;
 }) => new HttpError({ statusCode: params.statusCode ?? 409, code: params.code, message: params.message });

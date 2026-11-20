@@ -63,6 +63,19 @@ export const authPaths: OpenApiPaths = {
       },
     },
   },
+  "/auth/mfa/step-up-grants": {
+    post: {
+      tags: ["Auth"],
+      summary: "Issue a five-minute resource-scoped step-up proof",
+      description: "Verifies and atomically consumes a TOTP step or recovery code. The opaque proof is returned once and must remain in memory.",
+      security: [{ bearerAuth: [] }],
+      requestBody: jsonBody({ $ref: "#/components/schemas/StepUpGrantRequest" }),
+      responses: {
+        "200": successResponse("Single-use step-up proof", { $ref: "#/components/schemas/StepUpGrantResult" }),
+        ...errorResponses,
+      },
+    },
+  },
   "/auth/register": {
     post: {
       tags: ["Auth"],

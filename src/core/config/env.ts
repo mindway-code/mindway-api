@@ -69,6 +69,7 @@ const envSchema = z
     MFA_ENROLLMENT_TTL_SECONDS: z.coerce.number().int().positive().default(600),
     MFA_ATTEMPT_WINDOW_SECONDS: z.coerce.number().int().positive().default(300),
     MFA_ATTEMPT_MAX: z.coerce.number().int().positive().default(5),
+    MFA_STEP_UP_TTL_SECONDS: z.coerce.number().int().min(60).max(600).default(300),
 
     EMAIL_FROM: z.string().optional().default(""),
     GMAIL_USER: optionalEmail,

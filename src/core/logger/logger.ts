@@ -9,6 +9,7 @@ export const loggerOptions: LoggerOptions = {
     paths: [
       "req.headers.authorization",
       "req.headers.cookie",
+      "req.headers.x-mfa-proof",
       "req.body.password",
       "req.body.currentPassword",
       "req.body.newPassword",

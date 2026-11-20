@@ -145,6 +145,15 @@ export async function deleteTotpFactor(params: {
   });
 }
 
+export async function consumeMfaAssertion(params: {
+  factorId: string;
+  assertion: MfaCodeAssertion;
+}): Promise<boolean> {
+  return prisma.$transaction((transaction) =>
+    consumeAssertion(transaction, params.factorId, params.assertion),
+  );
+}
+
 export default {
   getMfaStatus,
   findTotpFactorByUserId,
@@ -152,4 +161,5 @@ export default {
   listUnusedRecoveryCodes,
   replaceRecoveryCodes,
   deleteTotpFactor,
+  consumeMfaAssertion,
 };

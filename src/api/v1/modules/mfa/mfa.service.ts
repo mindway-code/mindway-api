@@ -8,6 +8,7 @@ import {
 import {
   createTotpFactorWithRecoveryCodes,
   deleteTotpFactor,
+  consumeMfaAssertion,
   findTotpFactorByUserId,
   getMfaStatus,
   listUnusedRecoveryCodes,
@@ -21,7 +22,9 @@ import {
   loadPendingEnrollment,
   SecurityStoreUnavailableError,
   storePendingEnrollment,
+  issueStepUpGrant,
 } from "../../../../infra/redis/securityStore.js";
+import { createSecurityAuditEvent } from "../../../../infra/database/repositories/securityAudit.repository.js";
 import {
   decryptSecret,
   encryptSecret,
@@ -43,6 +46,7 @@ import type {
   MfaCodeAssertion,
   MfaProtectedActionDTO,
   StartTotpEnrollmentDTO,
+  StepUpGrantDTO,
   TotpFactorRecord,
 } from "./mfa.types.js";
 
@@ -55,6 +59,7 @@ type MfaEnv = Pick<
   | "MFA_ENROLLMENT_TTL_SECONDS"
   | "MFA_ATTEMPT_WINDOW_SECONDS"
   | "MFA_ATTEMPT_MAX"
+  | "MFA_STEP_UP_TTL_SECONDS"
 >;
 
 export type MfaServiceDeps = {
@@ -69,11 +74,14 @@ export type MfaServiceDeps = {
   listUnusedRecoveryCodes: typeof listUnusedRecoveryCodes;
   replaceRecoveryCodes: typeof replaceRecoveryCodes;
   deleteTotpFactor: typeof deleteTotpFactor;
+  consumeMfaAssertion: typeof consumeMfaAssertion;
+  createSecurityAuditEvent: typeof createSecurityAuditEvent;
   storePendingEnrollment: typeof storePendingEnrollment;
   loadPendingEnrollment: typeof loadPendingEnrollment;
   deletePendingEnrollment: typeof deletePendingEnrollment;
   incrementFailedAttempt: typeof incrementFailedAttempt;
   clearFailedAttempts: typeof clearFailedAttempts;
+  issueStepUpGrant: typeof issueStepUpGrant;
   generateTotpSecret: typeof generateTotpSecret;
   buildTotpUri: typeof buildTotpUri;
   verifyTotpCode: typeof verifyTotpCode;
@@ -348,12 +356,85 @@ export function makeMfaServices(deps: MfaServiceDeps) {
     await clearAttempts(params.userId, params.ip);
   }
 
+  async function issueStepUpGrantService(params: {
+    userId: string;
+    ip: string;
+    requestId: string;
+    dto: StepUpGrantDTO;
+  }) {
+    const auditBase = {
+      actorUserId: params.userId,
+      eventType: "MFA_STEP_UP_GRANT_ISSUED",
+      method: params.dto.method,
+      resourceType: params.dto.resourceType,
+      resourceId: params.dto.resourceId,
+      requestId: params.requestId,
+    } as const;
+
+    try {
+      const factor = await deps.findTotpFactorByUserId(params.userId);
+      if (!factor) {
+        throw deps.mfaError({ code: "MFA_NOT_CONFIGURED", statusCode: 409, message: "MFA is not configured" });
+      }
+
+      const assertion = await verifyMfaAssertion({
+        factor,
+        code: params.dto.code,
+        userId: params.userId,
+        ip: params.ip,
+      });
+      const expectedAssertionType = params.dto.method === "TOTP" ? "totp" : "recovery";
+      if (assertion.type !== expectedAssertionType) {
+        await recordFailedAttempt(params.userId, params.ip);
+        throw deps.mfaError({ code: "MFA_CODE_INVALID", statusCode: 401, message: "MFA code is invalid" });
+      }
+
+      const consumed = await deps.consumeMfaAssertion({ factorId: factor.id, assertion });
+      if (!consumed) {
+        throw deps.mfaError({
+          code: assertion.type === "totp" ? "MFA_CODE_REUSED" : "MFA_RECOVERY_CODE_INVALID",
+          statusCode: assertion.type === "totp" ? 409 : 401,
+          message: "MFA code could not be consumed",
+        });
+      }
+
+      const issuedAt = new Date();
+      const expiresAt = new Date(issuedAt.getTime() + deps.env.MFA_STEP_UP_TTL_SECONDS * 1000);
+      const grant = await securityOperation(() =>
+        deps.issueStepUpGrant(
+          {
+            userId: params.userId,
+            action: params.dto.action,
+            resourceType: params.dto.resourceType,
+            resourceId: params.dto.resourceId,
+            method: params.dto.method,
+            factorId: factor.id,
+            issuedAt: issuedAt.toISOString(),
+            expiresAt: expiresAt.toISOString(),
+          },
+          deps.env.MFA_STEP_UP_TTL_SECONDS,
+        ),
+      );
+      await clearAttempts(params.userId, params.ip);
+      await deps.createSecurityAuditEvent({ ...auditBase, outcome: "SUCCESS" });
+      return { grant, expiresIn: deps.env.MFA_STEP_UP_TTL_SECONDS };
+    } catch (error) {
+      await deps.createSecurityAuditEvent({
+        ...auditBase,
+        eventType: "MFA_STEP_UP_GRANT_FAILED",
+        outcome: "FAILURE",
+      });
+      throw error;
+    }
+  }
+
   return {
     getMfaStatusService,
     startTotpEnrollmentService,
     confirmTotpEnrollmentService,
     regenerateRecoveryCodesService,
     disableTotpService,
+    issueStepUpGrantService,
   };
 }
 
@@ -369,11 +450,14 @@ const defaultDeps: MfaServiceDeps = {
   listUnusedRecoveryCodes,
   replaceRecoveryCodes,
   deleteTotpFactor,
+  consumeMfaAssertion,
+  createSecurityAuditEvent,
   storePendingEnrollment,
   loadPendingEnrollment,
   deletePendingEnrollment,
   incrementFailedAttempt,
   clearFailedAttempts,
+  issueStepUpGrant,
   generateTotpSecret,
   buildTotpUri,
   verifyTotpCode,
@@ -391,4 +475,5 @@ export const {
   confirmTotpEnrollmentService,
   regenerateRecoveryCodesService,
   disableTotpService,
+  issueStepUpGrantService,
 } = makeMfaServices(defaultDeps);

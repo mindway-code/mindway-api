@@ -42,6 +42,11 @@ describe("report revision capabilities", () => {
     expect(decideReportCapabilities({ ...base, currentStatus: "SUBMITTED", publishedRevisionNumber: 1 }).canCreateRevision).toBe(false);
   });
 
+  it("allows only the author to validate the current submitted revision", () => {
+    expect(decideReportCapabilities({ ...base, currentStatus: "SUBMITTED" }).canValidate).toBe(true);
+    expect(decideReportCapabilities({ ...base, requesterId: "viewer", currentStatus: "SUBMITTED" }).canValidate).toBe(false);
+  });
+
   it("removes every capability from archived reports", () => {
     expect(decideReportCapabilities({ ...base, currentStatus: "DRAFT", archived: true })).toEqual({
       canView: false,

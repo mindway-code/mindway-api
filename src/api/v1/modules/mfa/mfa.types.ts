@@ -34,3 +34,11 @@ export type MfaProtectedActionDTO = {
   currentPassword: string;
   code: string;
 };
+
+export type StepUpGrantDTO = {
+  method: "TOTP" | "RECOVERY_CODE";
+  code: string;
+  action: "report.validate";
+  resourceType: "reportRevision";
+  resourceId: string;
+};

@@ -60,5 +60,84 @@ describe("MFA security store", () => {
     await expect(store.getFailedAttemptCount("user-1", "127.0.0.1")).rejects.toBeInstanceOf(
       SecurityStoreUnavailableError,
     );
+    await expect(store.consumeStepUpGrant({
+      token: "proof",
+      userId: "user-1",
+      action: "report.validate",
+      resourceType: "reportRevision",
+      resourceId: "revision-1",
+    })).rejects.toBeInstanceOf(SecurityStoreUnavailableError);
   });
+
+  it("issues at least 256 bits of opaque material and stores only its digest", async () => {
+    const client = makeClient();
+    const store = makeSecurityStore({ getClient: async () => client as any });
+    const grant = {
+      userId: "user-1",
+      action: "report.validate" as const,
+      resourceType: "reportRevision" as const,
+      resourceId: "revision-1",
+      method: "TOTP" as const,
+      factorId: "factor-1",
+      issuedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 300_000).toISOString(),
+    };
+
+    const proof = await store.issueStepUpGrant(grant, 300);
+
+    expect(Buffer.from(proof, "base64url")).toHaveLength(32);
+    expect(client.set).toHaveBeenCalledTimes(2);
+    const storedKey = client.set.mock.calls[0]![0] as string;
+    expect(storedKey).toMatch(/^mfa:step-up:[a-f0-9]{64}$/);
+    expect(storedKey).not.toContain(proof);
+    expect(client.set).toHaveBeenCalledWith(storedKey, JSON.stringify(grant), { EX: 300 });
+  });
+
+  it.each(["CONSUMED", "IDEMPOTENT_REPLAY"] as const)("atomically returns a sanitized %s grant", async (status) => {
+    const client = makeClient();
+    const grant = {
+      userId: "user-1",
+      action: "report.validate",
+      resourceType: "reportRevision",
+      resourceId: "revision-1",
+      method: "TOTP",
+      factorId: "factor-1",
+      issuedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 300_000).toISOString(),
+      consumedAt: new Date().toISOString(),
+      consumedIdempotencyKey: "idem-1",
+    };
+    client.eval.mockResolvedValue(JSON.stringify({ status, grant }));
+    const store = makeSecurityStore({ getClient: async () => client as any });
+
+    await expect(store.consumeStepUpGrant({
+      token: "secret-proof",
+      userId: "user-1",
+      action: "report.validate",
+      resourceType: "reportRevision",
+      resourceId: "revision-1",
+      idempotencyKey: "idem-1",
+    })).resolves.toEqual({
+      status,
+      grant: expect.not.objectContaining({ consumedAt: expect.anything(), consumedIdempotencyKey: expect.anything() }),
+    });
+    const keys = client.eval.mock.calls[0]![1].keys as string[];
+    expect(keys.join(":" )).not.toContain("secret-proof");
+  });
+
+  it.each(["INVALID", "EXPIRED", "ALREADY_USED", "SCOPE_MISMATCH"] as const)(
+    "distinguishes a %s proof without returning metadata",
+    async (status) => {
+      const client = makeClient();
+      client.eval.mockResolvedValue(JSON.stringify({ status }));
+      const store = makeSecurityStore({ getClient: async () => client as any });
+      await expect(store.consumeStepUpGrant({
+        token: "proof",
+        userId: "user-1",
+        action: "report.validate",
+        resourceType: "reportRevision",
+        resourceId: "revision-1",
+      })).resolves.toEqual({ status });
+    },
+  );
 });

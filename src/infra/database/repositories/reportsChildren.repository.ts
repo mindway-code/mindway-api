@@ -1,4 +1,5 @@
 import { prisma } from "../prisma/client.js";
+import { calculateReportContentHash } from "../../../utils/crypto/contentHash.js";
 import type {
   CreateReportWithRevisionInput,
   ListReportsChildrenParams,
@@ -24,6 +25,19 @@ const revisionSelect = {
   rejectionReason: true,
   createdAt: true,
   updatedAt: true,
+  validations: {
+    where: { revokedAt: null },
+    select: {
+      id: true,
+      revisionId: true,
+      validatorId: true,
+      type: true,
+      method: true,
+      validatedAt: true,
+      revokedAt: true,
+      validator: { select: { id: true, name: true } },
+    },
+  },
 } as const;
 
 const aggregateSelect = {
@@ -188,4 +202,157 @@ export async function archiveReportAggregate(params: { reportId: string; archive
     data: { archivedAt: new Date(), archivedById: params.archivedById },
   });
   return result.count === 1;
+}
+
+export type ValidateReportRevisionResult =
+  | { status: "VALIDATED" | "IDEMPOTENT"; validationId: string }
+  | {
+      status:
+        | "REPORT_NOT_FOUND"
+        | "REPORT_ARCHIVED"
+        | "REPORT_REVISION_MISMATCH"
+        | "REPORT_NOT_SUBMITTED"
+        | "REPORT_CONTENT_HASH_MISMATCH"
+        | "REPORT_ALREADY_VALIDATED"
+        | "REPORT_VALIDATOR_NOT_ALLOWED"
+        | "IDEMPOTENT_RESULT_MISSING";
+    };
+
+class ConcurrentReportValidationError extends Error {}
+
+export async function validateReportRevisionTransaction(params: {
+  reportId: string;
+  revisionId: string;
+  expectedContentHash: string;
+  validatorId: string;
+  factorId: string | null;
+  method: "TOTP" | "RECOVERY_CODE";
+  type: "AUTHOR_ATTESTATION";
+  idempotencyKey: string;
+  requestId: string;
+  idempotentReplay: boolean;
+}): Promise<ValidateReportRevisionResult> {
+  const existingByKey = await prisma.reportValidation.findUnique({
+    where: { idempotencyKey: params.idempotencyKey },
+    select: { id: true, revisionId: true, validatorId: true, type: true, revision: { select: { reportId: true } } },
+  });
+  if (existingByKey) {
+    return existingByKey.validatorId === params.validatorId &&
+      existingByKey.revisionId === params.revisionId &&
+      existingByKey.revision.reportId === params.reportId &&
+      existingByKey.type === params.type
+      ? { status: "IDEMPOTENT", validationId: existingByKey.id }
+      : { status: "REPORT_REVISION_MISMATCH" };
+  }
+  if (params.idempotentReplay) return { status: "IDEMPOTENT_RESULT_MISSING" };
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const report = await tx.reportsChild.findUnique({
+        where: { id: params.reportId },
+        select: {
+          id: true,
+          userId: true,
+          archivedAt: true,
+          currentRevisionNumber: true,
+          publishedRevisionNumber: true,
+          revisions: {
+            where: { id: params.revisionId },
+            select: {
+              id: true,
+              revisionNumber: true,
+              status: true,
+              title: true,
+              behavior: true,
+              difficulty: true,
+              recommendation: true,
+              contentHash: true,
+              validations: { where: { type: params.type }, select: { id: true } },
+            },
+          },
+        },
+      });
+
+      if (!report) return { status: "REPORT_NOT_FOUND" } as const;
+      if (report.archivedAt) return { status: "REPORT_ARCHIVED" } as const;
+      const revision = report.revisions[0];
+      if (!revision || revision.revisionNumber !== report.currentRevisionNumber) {
+        return { status: "REPORT_REVISION_MISMATCH" } as const;
+      }
+      if (revision.validations.length > 0 || revision.status === "VALIDATED") {
+        return { status: "REPORT_ALREADY_VALIDATED" } as const;
+      }
+      if (revision.status !== "SUBMITTED") return { status: "REPORT_NOT_SUBMITTED" } as const;
+      if (report.userId !== params.validatorId) return { status: "REPORT_VALIDATOR_NOT_ALLOWED" } as const;
+
+      const calculatedHash = calculateReportContentHash(revision);
+      if (revision.contentHash !== params.expectedContentHash || revision.contentHash !== calculatedHash) {
+        return { status: "REPORT_CONTENT_HASH_MISMATCH" } as const;
+      }
+
+      if (report.publishedRevisionNumber !== null && report.publishedRevisionNumber !== revision.revisionNumber) {
+        await tx.reportRevision.updateMany({
+          where: {
+            reportId: report.id,
+            revisionNumber: report.publishedRevisionNumber,
+            status: "VALIDATED",
+          },
+          data: { status: "SUPERSEDED" },
+        });
+      }
+
+      const validation = await tx.reportValidation.create({
+        data: {
+          revisionId: revision.id,
+          validatorId: params.validatorId,
+          totpFactorId: params.factorId,
+          type: params.type,
+          method: params.method,
+          idempotencyKey: params.idempotencyKey,
+          requestId: params.requestId,
+        },
+        select: { id: true },
+      });
+      const transitioned = await tx.reportRevision.updateMany({
+        where: { id: revision.id, reportId: report.id, status: "SUBMITTED" },
+        data: { status: "VALIDATED" },
+      });
+      if (transitioned.count !== 1) throw new ConcurrentReportValidationError();
+
+      const published = await tx.reportsChild.updateMany({
+        where: {
+          id: report.id,
+          archivedAt: null,
+          currentRevisionNumber: revision.revisionNumber,
+        },
+        data: { publishedRevisionNumber: revision.revisionNumber },
+      });
+      if (published.count !== 1) throw new ConcurrentReportValidationError();
+
+      await tx.securityAuditEvent.create({
+        data: {
+          actorUserId: params.validatorId,
+          eventType: "REPORT_AUTHOR_ATTESTED",
+          outcome: "SUCCESS",
+          method: params.method,
+          resourceType: "reportRevision",
+          resourceId: revision.id,
+          requestId: params.requestId,
+        },
+      });
+      return { status: "VALIDATED", validationId: validation.id } as const;
+    });
+  } catch (error) {
+    if (!(error instanceof ConcurrentReportValidationError) && (error as { code?: string }).code !== "P2002") {
+      throw error;
+    }
+    const existing = await prisma.reportValidation.findFirst({
+      where: { revisionId: params.revisionId, type: params.type },
+      select: { id: true, validatorId: true, idempotencyKey: true },
+    });
+    if (existing?.validatorId === params.validatorId && existing.idempotencyKey === params.idempotencyKey) {
+      return { status: "IDEMPOTENT", validationId: existing.id };
+    }
+    return { status: "REPORT_ALREADY_VALIDATED" };
+  }
 }

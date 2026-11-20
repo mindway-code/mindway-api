@@ -124,6 +124,30 @@ export const childrenPaths: OpenApiPaths = {
   "/reports-children/{id}/submissions": {
     post: { tags: ["Reports"], summary: "Freeze and submit the current draft", security: bearerSecurity, parameters: [idParameter()], responses: { "200": successResponse("Report submitted", { $ref: "#/components/schemas/ReportsChild" }), ...errorResponses } },
   },
+  "/reports-children/{id}/validations": {
+    post: {
+      tags: ["Reports"],
+      summary: "Attest and publish the exact submitted report revision",
+      description: "Consumes the revision-scoped proof before executing one transaction. If that transaction fails, request a new proof. An exact retry with the same proof and Idempotency-Key returns the stored success only when it already exists.",
+      security: bearerSecurity,
+      parameters: [
+        idParameter(),
+        { name: "X-MFA-Proof", in: "header", required: true, schema: { type: "string" }, description: "Opaque proof returned by /auth/mfa/step-up-grants." },
+        { name: "Idempotency-Key", in: "header", required: true, schema: { type: "string", format: "uuid" } },
+      ],
+      requestBody: jsonBody({
+        type: "object",
+        additionalProperties: false,
+        required: ["revisionId", "expectedContentHash", "type"],
+        properties: {
+          revisionId: { type: "string", format: "uuid" },
+          expectedContentHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+          type: { type: "string", enum: ["AUTHOR_ATTESTATION"] },
+        },
+      }),
+      responses: { "200": successResponse("Report revision validated and published", { $ref: "#/components/schemas/ReportsChild" }), ...errorResponses },
+    },
+  },
   "/reports-children/{id}/rejections": {
     post: { tags: ["Reports"], summary: "Reject the current submitted revision", security: bearerSecurity, parameters: [idParameter()], requestBody: jsonBody({ type: "object", required: ["reason"], properties: { reason: { type: "string", minLength: 1, maxLength: 2000 } } }), responses: { "200": successResponse("Report rejected", { $ref: "#/components/schemas/ReportsChild" }), ...errorResponses } },
   },

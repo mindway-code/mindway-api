@@ -34,7 +34,7 @@ export function decideReportCapabilities(context: ReportPolicyContext): ReportCa
     canView,
     canEditDraft: canView && isAuthor && currentIsDraft,
     canSubmit: canView && isAuthor && currentIsDraft,
-    canValidate: false,
+    canValidate: canView && isAuthor && context.currentStatus === "SUBMITTED",
     canCreateRevision: canView && isAuthor && context.publishedRevisionNumber !== null && !transitionIsFrozen,
     canArchive: canView && (isAuthor || isAdmin),
     canRevokeValidation: false,

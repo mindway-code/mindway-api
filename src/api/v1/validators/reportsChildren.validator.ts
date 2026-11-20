@@ -32,6 +32,12 @@ export const rejectReportSchema = z.object({
   reason: z.string().trim().min(1).max(2000),
 }).strict();
 
+export const validateReportSchema = z.object({
+  revisionId: z.string().uuid(),
+  expectedContentHash: z.string().regex(/^[a-f0-9]{64}$/),
+  type: z.literal("AUTHOR_ATTESTATION"),
+}).strict();
+
 export default {
   childIdParamsSchema,
   reportIdParamsSchema,
@@ -39,5 +45,6 @@ export default {
   createReportsChildSchema,
   updateReportsChildSchema,
   rejectReportSchema,
+  validateReportSchema,
 };
 

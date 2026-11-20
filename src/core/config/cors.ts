@@ -10,7 +10,7 @@ export function corsOptions() {
 		origin,
 		credentials: true,
 		methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-		allowedHeaders: ["Content-Type", "Authorization"],
+		allowedHeaders: ["Content-Type", "Authorization", "X-MFA-Proof", "Idempotency-Key"],
 	} as const;
 }
 

@@ -1,6 +1,6 @@
 import { pagination } from "../../../../utils/pagination.js";
 import { invalidateCachePatterns } from "../../../../utils/cache.js";
-import { badRequest, forbidden, notFound, reportError } from "../../../../core/errors/httpError.js";
+import { badRequest, forbidden, mfaError, notFound, reportError } from "../../../../core/errors/httpError.js";
 import type { UserRole } from "../../../../utils/crypto/jwt.js";
 import { calculateReportContentHash } from "../../../../utils/crypto/contentHash.js";
 import type { ChildWithAccessCodeRecord } from "../children/children.types.js";
@@ -16,6 +16,7 @@ import {
   markRevisionRejected,
   submitDraftRevision,
   updateDraftRevision,
+  validateReportRevisionTransaction,
 } from "../../../../infra/database/repositories/reportsChildren.repository.js";
 import type {
   CreateReportsChildDTO,
@@ -27,6 +28,8 @@ import type {
   ReportRevisionView,
   ReportView,
   UpdateReportsChildDTO,
+  ValidateReportDTO,
+  StepUpContext,
 } from "./reportsChildren.types.js";
 import { decideReportCapabilities } from "./reportsChildren.policy.js";
 
@@ -44,6 +47,7 @@ export type ReportsChildrenServiceDeps = {
   forbidden: typeof forbidden;
   notFound: typeof notFound;
   reportError: typeof reportError;
+  mfaError: typeof mfaError;
   calculateReportContentHash: typeof calculateReportContentHash;
   getChildById: typeof getChildById;
   findAssociationByUserAndChild: typeof findAssociationByUserAndChild;
@@ -57,6 +61,7 @@ export type ReportsChildrenServiceDeps = {
   markRevisionRejected: typeof markRevisionRejected;
   listReportRevisionHistory: typeof listReportRevisionHistory;
   archiveReportAggregate: typeof archiveReportAggregate;
+  validateReportRevisionTransaction: typeof validateReportRevisionTransaction;
 };
 
 const CHILDREN_CACHE_PATTERNS = ["children:list:*", "children:accessible:*"];
@@ -74,6 +79,7 @@ function revisionView(revision: ReportRevisionRecord): ReportRevisionView {
     id: revision.id,
     revisionNumber: revision.revisionNumber,
     status: revision.status,
+    contentHash: revision.contentHash,
     title: revision.title,
     behavior: revision.behavior,
     difficulty: revision.difficulty,
@@ -136,6 +142,10 @@ function toReportView(params: {
   const published = findRevision(report, report.publishedRevisionNumber);
   const canInspectWorkingRevision = requesterId === report.userId || requesterRole === "admin";
   const displayRevision = canInspectWorkingRevision ? current : published ?? current;
+  const validatedRevision = published ?? (displayRevision.status === "VALIDATED" ? displayRevision : null);
+  const activeValidation = validatedRevision?.validations?.find(
+    (validation) => validation.type === "AUTHOR_ATTESTATION" && validation.revokedAt === null,
+  );
   const capabilities = decideReportCapabilities({
     requesterId,
     requesterRole,
@@ -162,7 +172,16 @@ function toReportView(params: {
           : report.currentRevisionNumber !== report.publishedRevisionNumber,
     },
     revision: revisionView(displayRevision),
-    validation: null,
+    validation: activeValidation && validatedRevision
+      ? {
+          id: activeValidation.id,
+          type: activeValidation.type,
+          method: activeValidation.method,
+          validatedAt: activeValidation.validatedAt,
+          validator: activeValidation.validator,
+          revisionNumber: validatedRevision.revisionNumber,
+        }
+      : null,
     capabilities,
     createdAt: report.createdAt,
     updatedAt: report.updatedAt,
@@ -336,6 +355,78 @@ export function makeReportsChildrenServices(deps: ReportsChildrenServiceDeps) {
     return { id: report.id };
   }
 
+  async function validateReportService(params: {
+    requesterId: string;
+    requesterRole: UserRole;
+    reportId: string;
+    idempotencyKey: string;
+    requestId: string;
+    dto: ValidateReportDTO;
+    stepUp: StepUpContext;
+  }) {
+    if (!params.stepUp.idempotentReplay) {
+      const { report, context } = await loadAccessibleReport(params);
+      const view = toReportView({
+        report,
+        context,
+        requesterId: params.requesterId,
+        requesterRole: params.requesterRole,
+      });
+      if (!view.capabilities.canValidate) {
+        const current = currentRevision(report);
+        if (report.userId !== params.requesterId) {
+          throw deps.reportError({
+            code: "REPORT_VALIDATOR_NOT_ALLOWED",
+            statusCode: 403,
+            message: "Only the report author can attest this revision",
+          });
+        }
+        if (current.status !== "SUBMITTED") {
+          throw deps.reportError({ code: "REPORT_NOT_SUBMITTED", message: "Only a submitted revision can be validated" });
+        }
+        throw deps.forbidden();
+      }
+    }
+
+    const result = await deps.validateReportRevisionTransaction({
+      reportId: params.reportId,
+      revisionId: params.dto.revisionId,
+      expectedContentHash: params.dto.expectedContentHash,
+      validatorId: params.requesterId,
+      factorId: params.stepUp.factorId,
+      method: params.stepUp.method,
+      type: params.dto.type,
+      idempotencyKey: params.idempotencyKey,
+      requestId: params.requestId,
+      idempotentReplay: params.stepUp.idempotentReplay,
+    });
+
+    switch (result.status) {
+      case "REPORT_NOT_FOUND":
+        throw deps.notFound("Report not found");
+      case "REPORT_ARCHIVED":
+        throw deps.reportError({ code: "REPORT_ARCHIVED", message: "Report is archived" });
+      case "REPORT_REVISION_MISMATCH":
+        throw deps.reportError({ code: "REPORT_REVISION_MISMATCH", message: "Revision does not match the current report revision" });
+      case "REPORT_NOT_SUBMITTED":
+        throw deps.reportError({ code: "REPORT_NOT_SUBMITTED", message: "Only a submitted revision can be validated" });
+      case "REPORT_CONTENT_HASH_MISMATCH":
+        throw deps.reportError({ code: "REPORT_CONTENT_HASH_MISMATCH", message: "Report content hash does not match" });
+      case "REPORT_ALREADY_VALIDATED":
+        throw deps.reportError({ code: "REPORT_ALREADY_VALIDATED", message: "Report revision is already validated" });
+      case "REPORT_VALIDATOR_NOT_ALLOWED":
+        throw deps.reportError({ code: "REPORT_VALIDATOR_NOT_ALLOWED", statusCode: 403, message: "Only the report author can attest this revision" });
+      case "IDEMPOTENT_RESULT_MISSING":
+        throw deps.mfaError({ code: "MFA_PROOF_ALREADY_USED", statusCode: 409, message: "MFA proof was already used" });
+      default:
+        return getReportByIdService({
+          requesterId: params.requesterId,
+          requesterRole: params.requesterRole,
+          reportId: params.reportId,
+        });
+    }
+  }
+
   return {
     listReportsByChildService,
     createReportForChildService,
@@ -346,6 +437,7 @@ export function makeReportsChildrenServices(deps: ReportsChildrenServiceDeps) {
     rejectReportService,
     listRevisionHistoryService,
     deleteReportService,
+    validateReportService,
   };
 }
 
@@ -355,6 +447,7 @@ const defaultDeps: ReportsChildrenServiceDeps = {
   forbidden,
   notFound,
   reportError,
+  mfaError,
   calculateReportContentHash,
   getChildById,
   findAssociationByUserAndChild,
@@ -368,6 +461,7 @@ const defaultDeps: ReportsChildrenServiceDeps = {
   markRevisionRejected,
   listReportRevisionHistory,
   archiveReportAggregate,
+  validateReportRevisionTransaction,
 };
 
 export const {
@@ -380,4 +474,5 @@ export const {
   rejectReportService,
   listRevisionHistoryService,
   deleteReportService,
+  validateReportService,
 } = makeReportsChildrenServices(defaultDeps);

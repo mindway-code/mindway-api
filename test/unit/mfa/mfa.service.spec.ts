@@ -25,6 +25,7 @@ function makeDeps() {
       MFA_ENROLLMENT_TTL_SECONDS: 600,
       MFA_ATTEMPT_WINDOW_SECONDS: 300,
       MFA_ATTEMPT_MAX: 5,
+      MFA_STEP_UP_TTL_SECONDS: 300,
     },
     mfaError,
     passwordReauthenticationUnsupported,
@@ -44,11 +45,14 @@ function makeDeps() {
     listUnusedRecoveryCodes: jest.fn<(...args: any[]) => any>().mockResolvedValue([]),
     replaceRecoveryCodes: jest.fn<(...args: any[]) => any>().mockResolvedValue(true),
     deleteTotpFactor: jest.fn<(...args: any[]) => any>().mockResolvedValue(true),
+    consumeMfaAssertion: jest.fn<(...args: any[]) => any>().mockResolvedValue(true),
+    createSecurityAuditEvent: jest.fn<(...args: any[]) => any>().mockResolvedValue(undefined),
     storePendingEnrollment: jest.fn<(...args: any[]) => any>().mockResolvedValue(undefined),
     loadPendingEnrollment: jest.fn<(...args: any[]) => any>().mockResolvedValue({ userId: "user-1", encryptedSecret }),
     deletePendingEnrollment: jest.fn<(...args: any[]) => any>().mockResolvedValue(undefined),
     incrementFailedAttempt: jest.fn<(...args: any[]) => any>().mockResolvedValue(1),
     clearFailedAttempts: jest.fn<(...args: any[]) => any>().mockResolvedValue(undefined),
+    issueStepUpGrant: jest.fn<(...args: any[]) => any>().mockResolvedValue("opaque-proof"),
     generateTotpSecret: jest.fn(() => "MANUALBASE32SECRET"),
     buildTotpUri: jest.fn(() => "otpauth://local-only-uri"),
     verifyTotpCode: jest.fn<(...args: any[]) => any>().mockReturnValue({ valid: true, matchedTimeStep: 100 }),
@@ -211,5 +215,73 @@ describe("MFA services", () => {
     expect(serialized).not.toContain("123456");
     expect(serialized).not.toContain("MANUALBASE32SECRET");
     expect(serialized).not.toContain("otpauth://");
+  });
+
+  it("consumes the matched TOTP step before issuing a five-minute revision-scoped grant", async () => {
+    deps.findTotpFactorByUserId.mockResolvedValue(factor);
+    const service = makeMfaServices(deps as any);
+    const result = await service.issueStepUpGrantService({
+      userId: "user-1",
+      ip: "127.0.0.1",
+      requestId: "request-1",
+      dto: {
+        method: "TOTP",
+        code: "123456",
+        action: "report.validate",
+        resourceType: "reportRevision",
+        resourceId: "revision-1",
+      },
+    });
+
+    expect(result).toEqual({ grant: "opaque-proof", expiresIn: 300 });
+    expect(deps.consumeMfaAssertion).toHaveBeenCalledWith({
+      factorId: "factor-1",
+      assertion: { type: "totp", timeStep: 100n },
+    });
+    expect(deps.consumeMfaAssertion.mock.invocationCallOrder[0]!).toBeLessThan(
+      deps.issueStepUpGrant.mock.invocationCallOrder[0]!,
+    );
+    expect(deps.issueStepUpGrant).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user-1",
+        action: "report.validate",
+        resourceType: "reportRevision",
+        resourceId: "revision-1",
+        method: "TOTP",
+        factorId: "factor-1",
+      }),
+      300,
+    );
+    expect(deps.createSecurityAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: "MFA_STEP_UP_GRANT_ISSUED",
+      outcome: "SUCCESS",
+      resourceId: "revision-1",
+    }));
+    expect(JSON.stringify(deps.createSecurityAuditEvent.mock.calls)).not.toContain("123456");
+    expect(JSON.stringify(deps.createSecurityAuditEvent.mock.calls)).not.toContain("opaque-proof");
+  });
+
+  it("does not issue a grant when the TOTP step loses an atomic reuse race", async () => {
+    deps.findTotpFactorByUserId.mockResolvedValue(factor);
+    deps.consumeMfaAssertion.mockResolvedValue(false);
+    const service = makeMfaServices(deps as any);
+
+    await expect(service.issueStepUpGrantService({
+      userId: "user-1",
+      ip: "127.0.0.1",
+      requestId: "request-1",
+      dto: {
+        method: "TOTP",
+        code: "123456",
+        action: "report.validate",
+        resourceType: "reportRevision",
+        resourceId: "revision-1",
+      },
+    })).rejects.toMatchObject({ code: "MFA_CODE_REUSED" });
+    expect(deps.issueStepUpGrant).not.toHaveBeenCalled();
+    expect(deps.createSecurityAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: "MFA_STEP_UP_GRANT_FAILED",
+      outcome: "FAILURE",
+    }));
   });
 });

@@ -31,11 +31,14 @@ model User {
   responsibleChildren          Child[] @relation("ChildResponsible")
   secondaryResponsibleChildren Child[] @relation("ChildSecondaryResponsible")
 
-  associatedUsers AssociationChild[]
-  reports         ReportsChild[]    @relation("ReportAuthor")
-  archivedReports ReportsChild[]    @relation("ReportArchiver")
-  reportRevisions ReportRevision[]  @relation("ReportRevisionAuthor")
-  totpFactor      UserTotpFactor?
+  associatedUsers          AssociationChild[]
+  reports                  ReportsChild[]       @relation("ReportAuthor")
+  archivedReports          ReportsChild[]       @relation("ReportArchiver")
+  reportRevisions          ReportRevision[]     @relation("ReportRevisionAuthor")
+  totpFactor               UserTotpFactor?
+  reportValidations        ReportValidation[]   @relation("ReportValidator")
+  revokedReportValidations ReportValidation[]   @relation("ReportValidationRevoker")
+  securityAuditEvents      SecurityAuditEvent[] @relation("SecurityAuditActor")
 
   @@index([provider])
   @@index([createdAt])
@@ -70,8 +73,9 @@ model UserTotpFactor {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  recoveryCodes MfaRecoveryCode[]
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recoveryCodes     MfaRecoveryCode[]
+  reportValidations ReportValidation[]
 
   @@index([enabledAt])
   @@map("user_totp_factors")
@@ -208,7 +212,6 @@ model Message {
   @@map("messages")
 }
 
-
 model Child {
   id                     String  @id @default(uuid()) @db.Uuid
   responsibleId          String  @map("responsible_id") @db.Uuid
@@ -291,29 +294,75 @@ model ReportsChild {
 }
 
 model ReportRevision {
-  id               String               @id @default(uuid()) @db.Uuid
-  reportId         String               @map("report_id") @db.Uuid
-  revisionNumber   Int                  @map("revision_number")
-  createdById      String               @map("created_by_id") @db.Uuid
-  status           ReportRevisionStatus
-  title            String
-  behavior         String?
-  difficulty       String?
-  recommendation   String?
-  contentHash      String               @map("content_hash")
-  submittedAt      DateTime?            @map("submitted_at")
-  rejectedAt       DateTime?            @map("rejected_at")
-  rejectionReason  String?              @map("rejection_reason")
-  createdAt        DateTime             @default(now()) @map("created_at")
-  updatedAt        DateTime             @updatedAt @map("updated_at")
+  id              String               @id @default(uuid()) @db.Uuid
+  reportId        String               @map("report_id") @db.Uuid
+  revisionNumber  Int                  @map("revision_number")
+  createdById     String               @map("created_by_id") @db.Uuid
+  status          ReportRevisionStatus
+  title           String
+  behavior        String?
+  difficulty      String?
+  recommendation  String?
+  contentHash     String               @map("content_hash")
+  submittedAt     DateTime?            @map("submitted_at")
+  rejectedAt      DateTime?            @map("rejected_at")
+  rejectionReason String?              @map("rejection_reason")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
 
-  report   ReportsChild @relation(fields: [reportId], references: [id], onDelete: Cascade)
-  createdBy User         @relation("ReportRevisionAuthor", fields: [createdById], references: [id], onDelete: Restrict)
+  report      ReportsChild       @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  createdBy   User               @relation("ReportRevisionAuthor", fields: [createdById], references: [id], onDelete: Restrict)
+  validations ReportValidation[]
 
   @@unique([reportId, revisionNumber])
   @@index([reportId, status])
   @@index([createdById])
   @@map("report_revisions")
+}
+
+model ReportValidation {
+  id               String               @id @default(uuid()) @db.Uuid
+  revisionId       String               @map("revision_id") @db.Uuid
+  validatorId      String               @map("validator_id") @db.Uuid
+  totpFactorId     String?              @map("totp_factor_id") @db.Uuid
+  type             ReportValidationType
+  method           MfaMethod
+  idempotencyKey   String               @unique @map("idempotency_key") @db.Uuid
+  requestId        String               @map("request_id")
+  validatedAt      DateTime             @default(now()) @map("validated_at")
+  revokedAt        DateTime?            @map("revoked_at")
+  revokedById      String?              @map("revoked_by_id") @db.Uuid
+  revocationReason String?              @map("revocation_reason")
+
+  revision   ReportRevision  @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  validator  User            @relation("ReportValidator", fields: [validatorId], references: [id], onDelete: Restrict)
+  totpFactor UserTotpFactor? @relation(fields: [totpFactorId], references: [id], onDelete: SetNull)
+  revokedBy  User?           @relation("ReportValidationRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
+
+  @@unique([revisionId, type])
+  @@index([validatorId, validatedAt])
+  @@index([totpFactorId])
+  @@index([revokedAt])
+  @@map("report_validations")
+}
+
+model SecurityAuditEvent {
+  id           String               @id @default(uuid()) @db.Uuid
+  actorUserId  String?              @map("actor_user_id") @db.Uuid
+  eventType    String               @map("event_type")
+  outcome      SecurityAuditOutcome
+  method       MfaMethod?
+  resourceType String?              @map("resource_type")
+  resourceId   String?              @map("resource_id")
+  requestId    String?              @map("request_id")
+  createdAt    DateTime             @default(now()) @map("created_at")
+
+  actor User? @relation("SecurityAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId, createdAt])
+  @@index([eventType, createdAt])
+  @@index([resourceType, resourceId])
+  @@map("security_audit_events")
 }
 
 model Anamnesis {
@@ -497,4 +546,18 @@ enum ReportRevisionStatus {
   VALIDATED
   REJECTED
   SUPERSEDED
+}
+
+enum ReportValidationType {
+  AUTHOR_ATTESTATION
+}
+
+enum MfaMethod {
+  TOTP
+  RECOVERY_CODE
+}
+
+enum SecurityAuditOutcome {
+  SUCCESS
+  FAILURE
 }

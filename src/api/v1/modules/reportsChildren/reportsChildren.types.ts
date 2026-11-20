@@ -22,6 +22,18 @@ export type ReportRevisionRecord = ReportContentFields & {
   rejectionReason: string | null;
   createdAt: Date;
   updatedAt: Date;
+  validations?: ReportValidationRecord[];
+};
+
+export type ReportValidationRecord = {
+  id: string;
+  revisionId: string;
+  validatorId: string;
+  type: "AUTHOR_ATTESTATION";
+  method: "TOTP" | "RECOVERY_CODE";
+  validatedAt: Date;
+  revokedAt: Date | null;
+  validator: { id: string; name: string | null };
 };
 
 export type ReportAggregateRecord = {
@@ -43,11 +55,21 @@ export type ReportRevisionView = ReportContentFields & {
   id: string;
   revisionNumber: number;
   status: ReportRevisionStatus;
+  contentHash: string;
   submittedAt: Date | null;
   rejectedAt: Date | null;
   rejectionReason: string | null;
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type ReportValidationSummary = {
+  id: string;
+  type: "AUTHOR_ATTESTATION";
+  method: "TOTP" | "RECOVERY_CODE";
+  validatedAt: Date;
+  validator: { id: string; name: string | null };
+  revisionNumber: number;
 };
 
 export type ReportView = {
@@ -62,7 +84,7 @@ export type ReportView = {
     hasUnpublishedChanges: boolean;
   };
   revision: ReportRevisionView;
-  validation: null;
+  validation: ReportValidationSummary | null;
   capabilities: ReportCapabilities;
   createdAt: Date;
   updatedAt: Date;
@@ -84,6 +106,18 @@ export type UpdateReportsChildDTO = {
 };
 
 export type RejectReportDTO = { reason: string };
+
+export type ValidateReportDTO = {
+  revisionId: string;
+  expectedContentHash: string;
+  type: "AUTHOR_ATTESTATION";
+};
+
+export type StepUpContext = {
+  method: "TOTP" | "RECOVERY_CODE";
+  factorId: string | null;
+  idempotentReplay: boolean;
+};
 
 export type CreateReportWithRevisionInput = ReportContentFields & {
   childId: string;
